@@ -32,6 +32,14 @@
 
 namespace alex {
 
+// My functions to make code work for Mac OS
+ int count_leading_zeros(uint64_t value) {
+   return value == 0 ? 64 : __builtin_clzll(value);
+ }
+ int count_trailing_zeros(uint64_t value) {
+   return value == 0 ? 64 : __builtin_ctzll(value);
+ }
+
 // A parent class for both types of ALEX nodes
 template <class T, class P>
 class AlexNode {
@@ -548,20 +556,20 @@ class AlexDataNode : public AlexNode<T, P> {
       bitmap_data &= ~((1ULL << left_bit_pos) - 1);
       int right_bit_pos = right - (right_bitmap_idx << 6);
       bitmap_data &= ((1ULL << right_bit_pos) - 1);
-      num_keys += _mm_popcnt_u64(bitmap_data);
+      num_keys += __builtin_popcountll(bitmap_data);
     } else {
       uint64_t left_bitmap_data = bitmap_[left_bitmap_idx];
       int bit_pos = left - (left_bitmap_idx << 6);
       left_bitmap_data &= ~((1ULL << bit_pos) - 1);
-      num_keys += _mm_popcnt_u64(left_bitmap_data);
+      num_keys += __builtin_popcountll(left_bitmap_data);
       for (int i = left_bitmap_idx + 1; i < right_bitmap_idx; i++) {
-        num_keys += _mm_popcnt_u64(bitmap_[i]);
+        num_keys += __builtin_popcountll(bitmap_[i]);
       }
       if (right_bitmap_idx != bitmap_size_) {
         uint64_t right_bitmap_data = bitmap_[right_bitmap_idx];
         bit_pos = right - (right_bitmap_idx << 6);
         right_bitmap_data &= ((1ULL << bit_pos) - 1);
-        num_keys += _mm_popcnt_u64(right_bitmap_data);
+        num_keys += __builtin_popcountll(right_bitmap_data);
       }
     }
     return num_keys;
@@ -2609,7 +2617,7 @@ static void build_model_sampling(const V* values, int num_keys,
     int bit_pos = pos - (bitmap_pos << 6);
     if (bitmap_[bitmap_pos] == static_cast<uint64_t>(-1) ||
         (bitmap_pos == bitmap_size_ - 1 &&
-         _mm_popcnt_u64(bitmap_[bitmap_pos]) ==
+          __builtin_popcountll(bitmap_[bitmap_pos]) ==
              data_capacity_ - ((bitmap_size_ - 1) << 6))) {
       // no gaps in this block of 64 positions, start searching in adjacent
       // blocks
@@ -2626,10 +2634,10 @@ static void build_model_sampling(const V* values, int num_keys,
         if (left_bitmap_data != static_cast<uint64_t>(-1) &&
             right_bitmap_data != static_cast<uint64_t>(-1)) {
           int left_gap_pos = ((bitmap_pos - bitmap_distance + 1) << 6) -
-                             static_cast<int>(_lzcnt_u64(~left_bitmap_data)) -
-                             1;
+                              static_cast<int>(count_leading_zeros(~left_bitmap_data)) -
+                              1;
           int right_gap_pos = ((bitmap_pos + bitmap_distance) << 6) +
-                              static_cast<int>(_tzcnt_u64(~right_bitmap_data));
+                               static_cast<int>(count_trailing_zeros(~right_bitmap_data));
           if (pos - left_gap_pos <= right_gap_pos - pos ||
               right_gap_pos >= data_capacity_) {
             return left_gap_pos;
@@ -2638,16 +2646,16 @@ static void build_model_sampling(const V* values, int num_keys,
           }
         } else if (left_bitmap_data != static_cast<uint64_t>(-1)) {
           int left_gap_pos = ((bitmap_pos - bitmap_distance + 1) << 6) -
-                             static_cast<int>(_lzcnt_u64(~left_bitmap_data)) -
-                             1;
+                              static_cast<int>(count_leading_zeros(~left_bitmap_data)) -
+                              1;
           // also need to check next block to the right
           if (bit_pos > 32 && bitmap_pos + bitmap_distance + 1 < bitmap_size_ &&
               bitmap_[bitmap_pos + bitmap_distance + 1] !=
                   static_cast<uint64_t>(-1)) {
             int right_gap_pos =
-                ((bitmap_pos + bitmap_distance + 1) << 6) +
-                static_cast<int>(
-                    _tzcnt_u64(~bitmap_[bitmap_pos + bitmap_distance + 1]));
+                 ((bitmap_pos + bitmap_distance + 1) << 6) +
+                 static_cast<int>(
+                     count_trailing_zeros(~bitmap_[bitmap_pos + bitmap_distance + 1]));
             if (pos - left_gap_pos <= right_gap_pos - pos ||
                 right_gap_pos >= data_capacity_) {
               return left_gap_pos;
@@ -2659,17 +2667,17 @@ static void build_model_sampling(const V* values, int num_keys,
           }
         } else if (right_bitmap_data != static_cast<uint64_t>(-1)) {
           int right_gap_pos = ((bitmap_pos + bitmap_distance) << 6) +
-                              static_cast<int>(_tzcnt_u64(~right_bitmap_data));
+                               static_cast<int>(count_trailing_zeros(~right_bitmap_data));
           if (right_gap_pos < data_capacity_) {
             // also need to check next block to the left
             if (bit_pos < 32 && bitmap_pos - bitmap_distance > 0 &&
                 bitmap_[bitmap_pos - bitmap_distance - 1] !=
                     static_cast<uint64_t>(-1)) {
               int left_gap_pos =
-                  ((bitmap_pos - bitmap_distance) << 6) -
-                  static_cast<int>(
-                      _lzcnt_u64(~bitmap_[bitmap_pos - bitmap_distance - 1])) -
-                  1;
+                   ((bitmap_pos - bitmap_distance) << 6) -
+                   static_cast<int>(
+                       count_leading_zeros(~bitmap_[bitmap_pos - bitmap_distance - 1])) -
+                   1;
               if (pos - left_gap_pos <= right_gap_pos - pos ||
                   right_gap_pos >= data_capacity_) {
                 return left_gap_pos;
@@ -2686,15 +2694,15 @@ static void build_model_sampling(const V* values, int num_keys,
       if (max_left_bitmap_offset > max_right_bitmap_offset) {
         for (int i = bitmap_pos - bitmap_distance; i >= left_bitmap_pos; i--) {
           if (bitmap_[i] != static_cast<uint64_t>(-1)) {
-            return ((i + 1) << 6) - static_cast<int>(_lzcnt_u64(~bitmap_[i])) -
-                   1;
+             return ((i + 1) << 6) - static_cast<int>(count_leading_zeros(~bitmap_[i])) -
+                    1;
           }
         }
       } else {
         for (int i = bitmap_pos + bitmap_distance; i <= right_bitmap_pos; i++) {
           if (bitmap_[i] != static_cast<uint64_t>(-1)) {
             int right_gap_pos =
-                (i << 6) + static_cast<int>(_tzcnt_u64(~bitmap_[i]));
+                 (i << 6) + static_cast<int>(count_trailing_zeros(~bitmap_[i]));
             if (right_gap_pos >= data_capacity_) {
               return -1;
             } else {
@@ -2717,12 +2725,12 @@ static void build_model_sampling(const V* values, int num_keys,
       uint64_t bitmap_right_gaps = ~(bitmap_data | ((1ULL << bit_pos) - 1));
       if (bitmap_right_gaps != 0) {
         closest_right_gap_distance =
-            static_cast<int>(_tzcnt_u64(bitmap_right_gaps)) - bit_pos;
+             static_cast<int>(count_trailing_zeros(bitmap_right_gaps)) - bit_pos;
       } else if (bitmap_pos + 1 < bitmap_size_) {
         // look in the next block to the right
         closest_right_gap_distance =
-            64 + static_cast<int>(_tzcnt_u64(~bitmap_[bitmap_pos + 1])) -
-            bit_pos;
+             64 + static_cast<int>(count_trailing_zeros(~bitmap_[bitmap_pos + 1])) -
+             bit_pos;
       }
       // Logically gaps to the left of pos, in the bitmap these are gaps to the
       // right of pos's bit
@@ -2731,12 +2739,12 @@ static void build_model_sampling(const V* values, int num_keys,
       uint64_t bitmap_left_gaps = (~bitmap_data) & ((1ULL << bit_pos) - 1);
       if (bitmap_left_gaps != 0) {
         closest_left_gap_distance =
-            bit_pos - (63 - static_cast<int>(_lzcnt_u64(bitmap_left_gaps)));
+             bit_pos - (63 - static_cast<int>(count_leading_zeros(bitmap_left_gaps)));
       } else if (bitmap_pos > 0) {
         // look in the next block to the left
         closest_left_gap_distance =
-            bit_pos + static_cast<int>(_lzcnt_u64(~bitmap_[bitmap_pos - 1])) +
-            1;
+             bit_pos + static_cast<int>(count_leading_zeros(~bitmap_[bitmap_pos - 1])) +
+             1;
       }
 
       if (closest_right_gap_distance < closest_left_gap_distance &&

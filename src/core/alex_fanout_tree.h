@@ -311,7 +311,7 @@ std::pair<int, double> find_best_fanout_bottom_up(
   std::vector<std::vector<FTNode>> fanout_tree;
   fanout_costs.push_back(best_cost);
   fanout_tree.push_back(
-      {{0, 0, best_cost, 0, num_keys, false, 0, 0, 0, 0, num_keys}});
+      {{0, 0, best_cost, 0, num_keys, false, 0, 0, 0, 0, static_cast<double>(num_keys)}});
   for (int fanout = 2, fanout_tree_level = 1; fanout <= max_fanout;
        fanout *= 2, fanout_tree_level++) {
     std::vector<FTNode> new_level;

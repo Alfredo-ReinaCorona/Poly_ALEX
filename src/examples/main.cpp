@@ -6,6 +6,7 @@
  */
 
 #include "../core/alex.h"
+// #include <tensorflow/c/c_api.h>
 
 #define KEY_TYPE int
 #define PAYLOAD_TYPE int
@@ -21,7 +22,7 @@ int main(int, char**) {
     values[i].first = i;
     values[i].second = dis(gen);
   }
-
+  // std::cout << "TF:" << TF_Version() << "\n";
   alex::Alex<KEY_TYPE, PAYLOAD_TYPE> index;
 
   // Bulk load the keys [0, 100)

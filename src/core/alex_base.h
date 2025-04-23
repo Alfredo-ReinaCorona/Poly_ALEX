@@ -28,7 +28,7 @@
  #ifdef _MSC_VER
  #include <intrin.h>
  #else
- #include <x86intrin.h>
+//  #include <x86intrin.h>
  #endif
  #include <bitset>
  #include <cassert>
@@ -334,7 +334,8 @@
  // Count the number of 1s in the binary representation.
  // e.g. count_ones(010100100) = 3
  inline int count_ones(uint64_t value) {
-   return static_cast<int>(_mm_popcnt_u64(value));
+  //  return static_cast<int>(_mm_popcnt_u64(value));
+  return static_cast<int>(__builtin_popcountll(value));
  }
  
  // Get the offset of a bit in a bitmap.
@@ -525,28 +526,28 @@
  }
  
  // https://stackoverflow.com/questions/1666093/cpuid-implementations-in-c
- class CPUID {
-   uint32_t regs[4];
+//  class CPUID {
+//    uint32_t regs[4];
  
-  public:
-   explicit CPUID(unsigned i, unsigned j) {
- #ifdef _WIN32
-     __cpuidex((int*)regs, (int)i, (int)j);
- #else
-     asm volatile("cpuid"
-                  : "=a"(regs[0]), "=b"(regs[1]), "=c"(regs[2]), "=d"(regs[3])
-                  : "a"(i), "c"(j));
- #endif
-   }
+//   public:
+//    explicit CPUID(unsigned i, unsigned j) {
+//  #ifdef _WIN32
+//      __cpuidex((int*)regs, (int)i, (int)j);
+//  #else
+//      asm volatile("cpuid"
+//                   : "=a"(regs[0]), "=b"(regs[1]), "=c"(regs[2]), "=d"(regs[3])
+//                   : "a"(i), "c"(j));
+//  #endif
+//    }
  
-   const uint32_t& EAX() const { return regs[0]; }
-   const uint32_t& EBX() const { return regs[1]; }
-   const uint32_t& ECX() const { return regs[2]; }
-   const uint32_t& EDX() const { return regs[3]; }
- };
+//    const uint32_t& EAX() const { return regs[0]; }
+//    const uint32_t& EBX() const { return regs[1]; }
+//    const uint32_t& ECX() const { return regs[2]; }
+//    const uint32_t& EDX() const { return regs[3]; }
+//  };
  
- // https://en.wikipedia.org/wiki/CPUID#EAX=7,_ECX=0:_Extended_Features
- inline bool cpu_supports_bmi() {
-   return static_cast<bool>(CPUID(7, 0).EBX() & (1 << 3));
- }
+//  // https://en.wikipedia.org/wiki/CPUID#EAX=7,_ECX=0:_Extended_Features
+//  inline bool cpu_supports_bmi() {
+//    return static_cast<bool>(CPUID(7, 0).EBX() & (1 << 3));
+//  }
  }
