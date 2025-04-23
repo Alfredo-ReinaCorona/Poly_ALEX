@@ -506,8 +506,11 @@ TEST_CASE("TestBuildIndexWithSample") {
   }
   std::sort(values, values + num_keys);
 
-  LinearModel<int> model;
-  LinearModel<int> model_using_sample;
+  // LinearModel<int> model;
+  // LinearModel<int> model_using_sample;
+
+  PolynomialModel<int> model;
+  PolynomialModel<int> model_using_sample;
 
   AlexDataNode<int, int>::build_model(values, num_keys, &model, false);
   AlexDataNode<int, int>::build_model(values, num_keys, &model_using_sample,
@@ -529,7 +532,8 @@ TEST_CASE("TestComputeCostWithSample") {
   }
   std::sort(values, values + num_keys);
 
-  LinearModel<int> model;
+  // LinearModel<int> model;
+  PolynomialModel<int> model;
   AlexDataNode<int, int>::build_model(values, num_keys, &model);
   double density = 0.7;
   double expected_insert_frac = 0.5;

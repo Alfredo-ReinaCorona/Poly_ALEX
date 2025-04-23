@@ -17,20 +17,36 @@ namespace alex {
 namespace fanout_tree {
 
 // A node of the fanout tree
+// struct FTNode {
+//   int level;    // level in the fanout tree
+//   int node_id;  // node's position within its level
+//   double cost;
+//   int left_boundary;  // start position in input array that this node represents
+//   int right_boundary;  // end position (exclusive) in input array that this node
+//                        // represents
+//   bool use = false;
+//   double expected_avg_search_iterations = 0;
+//   double expected_avg_shifts = 0;
+//   double a = 0;  // linear model slope
+//   double b = 0;  // linear model intercept
+//   int num_keys = 0;
+// };
+
 struct FTNode {
   int level;    // level in the fanout tree
   int node_id;  // node's position within its level
   double cost;
-  int left_boundary;  // start position in input array that this node represents
-  int right_boundary;  // end position (exclusive) in input array that this node
-                       // represents
+  int left_boundary;   // start position in input array that this node represents
+  int right_boundary;  // end position (exclusive) in input array
   bool use = false;
   double expected_avg_search_iterations = 0;
   double expected_avg_shifts = 0;
-  double a = 0;  // linear model slope
-  double b = 0;  // linear model intercept
+  double a = 0;  // x coefficient (linear term)
+  double b = 0;  // intercept
+  double c = 0;  // x^2 coefficient (quadratic term)
   int num_keys = 0;
 };
+
 
 /*** Helpers ***/
 
@@ -110,6 +126,78 @@ static double merge_nodes_upwards(
 // used_fanout_tree_nodes.
 // Assumes node has already been trained to produce a CDF value in the range [0,
 // 1).
+// template <class T, class P, class Compare = std::less<T>>
+// double compute_level(const std::pair<T, P> values[], int num_keys,
+//                      const AlexNode<T, P>* node, int total_keys,
+//                      std::vector<FTNode>& used_fanout_tree_nodes, int level,
+//                      int max_data_node_keys, double expected_insert_frac = 0,
+//                      bool approximate_model_computation = true,
+//                      bool approximate_cost_computation = false,
+//                      Compare key_less = Compare()) {
+//   int fanout = 1 << level;
+//   double cost = 0.0;
+//   double a = node->model_.a_ * fanout;
+//   double b = node->model_.b_ * fanout;
+//   int left_boundary = 0;
+//   int right_boundary = 0;
+//   for (int i = 0; i < fanout; i++) {
+//     left_boundary = right_boundary;
+//     right_boundary =
+//         i == fanout - 1
+//             ? num_keys
+//             : static_cast<int>(
+//                   std::lower_bound(values, values + num_keys, ((i + 1) - b) / a,
+//                                    [key_less](auto const& a, auto const& b) {
+//                                      return key_less(a.first, b);
+//                                    }) -
+//                   values);
+//     // Account for off-by-one errors due to floating-point precision issues.
+//     while (right_boundary < num_keys &&
+//            static_cast<int>(a * values[right_boundary].first + b) <= i) {
+//       right_boundary++;
+//     }
+//     if (left_boundary == right_boundary) {
+//       used_fanout_tree_nodes.push_back(
+//           {level, i, 0, left_boundary, right_boundary, false, 0, 0, 0, 0, 0});
+//       continue;
+//     }
+//     //LinearModel<T> model;
+//     PolynomialModel<T> model;
+//     AlexDataNode<T, P>::build_model(values + left_boundary,
+//                                     right_boundary - left_boundary, &model,
+//                                     approximate_model_computation);
+
+//     DataNodeStats stats;
+//     double node_cost = AlexDataNode<T, P>::compute_expected_cost(
+//         values + left_boundary, right_boundary - left_boundary,
+//         AlexDataNode<T, P>::kInitDensity_, expected_insert_frac, &model,
+//         approximate_cost_computation, &stats);
+//     // If the node is too big to be a data node, proactively incorporate an
+//     // extra tree traversal level into the cost.
+//     if (right_boundary - left_boundary > max_data_node_keys) {
+//       node_cost += kNodeLookupsWeight;
+//     }
+
+//     cost += node_cost * (right_boundary - left_boundary) / num_keys;
+
+//     // used_fanout_tree_nodes.push_back(
+//     //     {level, i, node_cost, left_boundary, right_boundary, false,
+//     //      stats.num_search_iterations, stats.num_shifts, model.a_, model.b_,
+//     //      right_boundary - left_boundary});
+//     used_fanout_tree_nodes.push_back(
+//       {level, i, node_cost, left_boundary, right_boundary, false,
+//        stats.num_search_iterations, stats.num_shifts,
+//        model.a_, model.b_, model.c_,
+//        right_boundary - left_boundary});  
+//   }
+//   double traversal_cost =
+//       kNodeLookupsWeight +
+//       (kModelSizeWeight * fanout *
+//        (sizeof(AlexDataNode<T, P>) + sizeof(void*)) * total_keys / num_keys);
+//   cost += traversal_cost;
+//   return cost;
+// }
+
 template <class T, class P, class Compare = std::less<T>>
 double compute_level(const std::pair<T, P> values[], int num_keys,
                      const AlexNode<T, P>* node, int total_keys,
@@ -120,43 +208,65 @@ double compute_level(const std::pair<T, P> values[], int num_keys,
                      Compare key_less = Compare()) {
   int fanout = 1 << level;
   double cost = 0.0;
-  double a = node->model_.a_ * fanout;
-  double b = node->model_.b_ * fanout;
+
+  const PolynomialModel<T>& model = static_cast<const PolynomialModel<T>&>(node->model_);
+
+  // Helper to invert a polynomial model at a given output (position)
+  auto invert_model = [](const PolynomialModel<T>& model, double pos) -> double {
+    double a = model.a_;
+    double b = model.b_;
+    double c = model.c_;
+    if (c == 0) {
+      return (pos - b) / a;
+    } else {
+      double discriminant = a * a - 4 * c * (b - pos);
+      discriminant = std::max(discriminant, 0.0);
+      return (-a + std::sqrt(discriminant)) / (2 * c);  // assume monotonic model
+    }
+  };
+
   int left_boundary = 0;
   int right_boundary = 0;
   for (int i = 0; i < fanout; i++) {
     left_boundary = right_boundary;
-    right_boundary =
-        i == fanout - 1
-            ? num_keys
-            : static_cast<int>(
-                  std::lower_bound(values, values + num_keys, ((i + 1) - b) / a,
-                                   [key_less](auto const& a, auto const& b) {
-                                     return key_less(a.first, b);
-                                   }) -
-                  values);
+
+    if (i == fanout - 1) {
+      right_boundary = num_keys;
+    } else {
+      double split_key = invert_model(model, static_cast<double>(i + 1));
+
+      right_boundary = static_cast<int>(
+        std::lower_bound(
+            values, values + num_keys, split_key,
+            [key_less](auto const& a, auto const& b) {
+              return key_less(a.first, b);
+            }) - values);
+    }
+
     // Account for off-by-one errors due to floating-point precision issues.
     while (right_boundary < num_keys &&
-           static_cast<int>(a * values[right_boundary].first + b) <= i) {
+           static_cast<int>(model.predict_double(values[right_boundary].first)) <= i) {
       right_boundary++;
     }
+
     if (left_boundary == right_boundary) {
       used_fanout_tree_nodes.push_back(
           {level, i, 0, left_boundary, right_boundary, false, 0, 0, 0, 0, 0});
       continue;
     }
-    LinearModel<T> model;
+
+    PolynomialModel<T> child_model;
     AlexDataNode<T, P>::build_model(values + left_boundary,
-                                    right_boundary - left_boundary, &model,
+                                    right_boundary - left_boundary,
+                                    &child_model,
                                     approximate_model_computation);
 
     DataNodeStats stats;
     double node_cost = AlexDataNode<T, P>::compute_expected_cost(
         values + left_boundary, right_boundary - left_boundary,
-        AlexDataNode<T, P>::kInitDensity_, expected_insert_frac, &model,
-        approximate_cost_computation, &stats);
-    // If the node is too big to be a data node, proactively incorporate an
-    // extra tree traversal level into the cost.
+        AlexDataNode<T, P>::kInitDensity_, expected_insert_frac,
+        &child_model, approximate_cost_computation, &stats);
+
     if (right_boundary - left_boundary > max_data_node_keys) {
       node_cost += kNodeLookupsWeight;
     }
@@ -165,16 +275,20 @@ double compute_level(const std::pair<T, P> values[], int num_keys,
 
     used_fanout_tree_nodes.push_back(
         {level, i, node_cost, left_boundary, right_boundary, false,
-         stats.num_search_iterations, stats.num_shifts, model.a_, model.b_,
+         stats.num_search_iterations, stats.num_shifts,
+         child_model.a_, child_model.b_, child_model.c_,
          right_boundary - left_boundary});
   }
+
   double traversal_cost =
       kNodeLookupsWeight +
       (kModelSizeWeight * fanout *
        (sizeof(AlexDataNode<T, P>) + sizeof(void*)) * total_keys / num_keys);
   cost += traversal_cost;
+
   return cost;
 }
+
 
 // Figures out the optimal partitioning of children in a "bottom-up" fashion
 // (see paper for details).
@@ -280,8 +394,40 @@ std::pair<int, double> find_best_fanout_top_down(
       int boundaries[] = {tree_node.left_boundary, middle_boundary,
                           tree_node.right_boundary};
       double node_costs[2];
+      // DataNodeStats node_stats[2];
+      // //LinearModel<T> node_models[2];
+      // PolynomialModel<T>node_models[2];
+      // for (int i = 0; i < 2; i++) {
+      //   int left = boundaries[i];
+      //   int right = boundaries[i + 1];
+      //   if (left == right) {
+      //     continue;
+      //   }
+      //   AlexDataNode<T, P>::build_model(values + left, right - left,
+      //                                   &node_models[i],
+      //                                   approximate_model_computation);
+      //   node_costs[i] = AlexDataNode<T, P>::compute_expected_cost(
+      //       values + left, right - left, AlexDataNode<T, P>::kInitDensity_,
+      //       expected_insert_frac, &node_models[i], approximate_cost_computation,
+      //       &node_stats[i]);
+      // }
+      // node_split_cost += sizeof(AlexDataNode<T, P>) * kModelSizeWeight *
+      //                    total_keys / num_node_keys;
+      // if (node_split_cost < tree_node.cost) {
+      //   cost_savings_from_level +=
+      //       (tree_node.cost - node_split_cost) * num_node_keys / num_keys;
+      //   for (int i = 0; i < 2; i++) {
+      //     new_level.push_back({fanout_tree_level, 2 * tree_node.node_id + i,
+      //                          node_costs[i], boundaries[i], boundaries[i + 1],
+      //                          true, node_stats[i].num_search_iterations,
+      //                          node_stats[i].num_shifts, node_models[i].a_,
+      //                          node_models[i].b_,
+      //                          boundaries[i + 1] - boundaries[i]});
+      //   }
+      //   tree_node.use = false;
+      // }
       DataNodeStats node_stats[2];
-      LinearModel<T> node_models[2];
+      PolynomialModel<T> node_models[2];
       for (int i = 0; i < 2; i++) {
         int left = boundaries[i];
         int right = boundaries[i + 1];
@@ -305,12 +451,15 @@ std::pair<int, double> find_best_fanout_top_down(
           new_level.push_back({fanout_tree_level, 2 * tree_node.node_id + i,
                                node_costs[i], boundaries[i], boundaries[i + 1],
                                true, node_stats[i].num_search_iterations,
-                               node_stats[i].num_shifts, node_models[i].a_,
-                               node_models[i].b_,
+                               node_stats[i].num_shifts,
+                               node_models[i].a_,  // x term
+                               node_models[i].b_,  // intercept
+                               node_models[i].c_,  // x^2 term
                                boundaries[i + 1] - boundaries[i]});
         }
         tree_node.use = false;
       }
+
     }
     if (new_level.empty()) {
       // use nodes up to the previous level
@@ -362,18 +511,97 @@ int find_best_fanout_existing_node(const AlexModelNode<T, P>* parent,
       bucketID - (bucketID % repeats);  // first bucket with same child
   int end_bucketID =
       start_bucketID + repeats;  // first bucket with different child
-  LinearModel<T> base_model;
-  if (parent->model_.a_ == 0){
+  // //LinearModel<T> base_model;
+  // PolynomialModelBuilder<T> base_model;
+  // if (parent->model_.a_ == 0){
+  //   base_model.a_ = 0;
+  //   base_model.b_ = -1.0 * (start_bucketID - parent->model_.b_) / repeats;
+  // }
+  // else{
+  //   double left_boundary_value =
+  //     (start_bucketID - parent->model_.b_) / parent->model_.a_;
+  //   double right_boundary_value =
+  //       (end_bucketID - parent->model_.b_) / parent->model_.a_;
+  //   base_model.a_ = 1.0 / (right_boundary_value - left_boundary_value);
+  //   base_model.b_ = -1.0 * base_model.a_ * left_boundary_value;
+  // }
+
+  // for (int fanout = 1, fanout_tree_level = 0; fanout <= max_fanout;
+  //      fanout *= 2, fanout_tree_level++) {
+  //   std::vector<FTNode> new_level;
+  //   double cost = 0.0;
+  //   double a = base_model.a_ * fanout;
+  //   double b = base_model.b_ * fanout;
+  //   int left_boundary = 0;
+  //   int right_boundary = 0;
+  //   for (int i = 0; i < fanout; i++) {
+  //     left_boundary = right_boundary;
+  //     right_boundary = i == fanout - 1 ? node->data_capacity_
+  //                                      : node->lower_bound(((i + 1) - b) / a);
+  //     if (left_boundary == right_boundary) {
+  //       new_level.push_back({fanout_tree_level, i, 0, left_boundary,
+  //                            right_boundary, false, 0, 0, 0, 0, 0});
+  //       continue;
+  //     }
+  //     int num_actual_keys = 0;
+  //     LinearModel<T> model;
+  //     typename AlexDataNode<T, P>::const_iterator_type it(node, left_boundary);
+  //     LinearModelBuilder<T> builder(&model);
+  //     for (int j = 0; it.cur_idx_ < right_boundary && !it.is_end(); it++, j++) {
+  //       builder.add(it.key(), j);
+  //       num_actual_keys++;
+  //     }
+  //     builder.build();
+
+  //     double empirical_insert_frac = node->frac_inserts();
+  //     DataNodeStats stats;
+  //     double node_cost =
+  //         AlexDataNode<T, P>::compute_expected_cost_from_existing(
+  //             node, left_boundary, right_boundary,
+  //             AlexDataNode<T, P>::kInitDensity_, empirical_insert_frac, &model,
+  //             &stats);
+
+  //     cost += node_cost * num_actual_keys / num_keys;
+
+  //     new_level.push_back({fanout_tree_level, i, node_cost, left_boundary,
+  //                          right_boundary, false, stats.num_search_iterations,
+  //                          stats.num_shifts, model.a_, model.b_,
+  //                          num_actual_keys});
+  //   }
+  //   // model weight reflects that it has global effect, not local effect
+  //   double traversal_cost =
+  //       kNodeLookupsWeight +
+  //       (kModelSizeWeight * fanout *
+  //        (sizeof(AlexDataNode<T, P>) + sizeof(void*)) * total_keys / num_keys);
+  //   cost += traversal_cost;
+  //   fanout_costs.push_back(cost);
+  //   // stop after expanding fanout increases cost twice in a row
+  //   if (fanout_costs.size() >= 3 &&
+  //       fanout_costs[fanout_costs.size() - 1] >
+  //           fanout_costs[fanout_costs.size() - 2] &&
+  //       fanout_costs[fanout_costs.size() - 2] >
+  //           fanout_costs[fanout_costs.size() - 3]) {
+  //     break;
+  //   }
+  //   if (cost < best_cost) {
+  //     best_cost = cost;
+  //     best_level = fanout_tree_level;
+  //   }
+  //   fanout_tree.push_back(new_level);
+  // }
+  PolynomialModel<T> base_model;
+  if (parent->model_.a_ == 0) {
     base_model.a_ = 0;
     base_model.b_ = -1.0 * (start_bucketID - parent->model_.b_) / repeats;
-  }
-  else{
+    base_model.c_ = 0;
+  } else {
     double left_boundary_value =
-      (start_bucketID - parent->model_.b_) / parent->model_.a_;
+        (start_bucketID - parent->model_.b_) / parent->model_.a_;
     double right_boundary_value =
         (end_bucketID - parent->model_.b_) / parent->model_.a_;
     base_model.a_ = 1.0 / (right_boundary_value - left_boundary_value);
     base_model.b_ = -1.0 * base_model.a_ * left_boundary_value;
+    base_model.c_ = 0;
   }
 
   for (int fanout = 1, fanout_tree_level = 0; fanout <= max_fanout;
@@ -382,21 +610,24 @@ int find_best_fanout_existing_node(const AlexModelNode<T, P>* parent,
     double cost = 0.0;
     double a = base_model.a_ * fanout;
     double b = base_model.b_ * fanout;
+    double c = base_model.c_ * fanout;
     int left_boundary = 0;
     int right_boundary = 0;
     for (int i = 0; i < fanout; i++) {
       left_boundary = right_boundary;
+      double target = (i + 1 - b) / a;
       right_boundary = i == fanout - 1 ? node->data_capacity_
-                                       : node->lower_bound(((i + 1) - b) / a);
+                                       : node->lower_bound(target);
       if (left_boundary == right_boundary) {
         new_level.push_back({fanout_tree_level, i, 0, left_boundary,
-                             right_boundary, false, 0, 0, 0, 0, 0});
+                             right_boundary, false, 0, 0, 0, 0, 0, 0});
         continue;
       }
+
       int num_actual_keys = 0;
-      LinearModel<T> model;
+      PolynomialModel<T> model;
       typename AlexDataNode<T, P>::const_iterator_type it(node, left_boundary);
-      LinearModelBuilder<T> builder(&model);
+      PolynomialModelBuilder<T> builder(&model);
       for (int j = 0; it.cur_idx_ < right_boundary && !it.is_end(); it++, j++) {
         builder.add(it.key(), j);
         num_actual_keys++;
@@ -415,9 +646,10 @@ int find_best_fanout_existing_node(const AlexModelNode<T, P>* parent,
 
       new_level.push_back({fanout_tree_level, i, node_cost, left_boundary,
                            right_boundary, false, stats.num_search_iterations,
-                           stats.num_shifts, model.a_, model.b_,
+                           stats.num_shifts, model.a_, model.b_, model.c_,
                            num_actual_keys});
     }
+
     // model weight reflects that it has global effect, not local effect
     double traversal_cost =
         kNodeLookupsWeight +
@@ -425,6 +657,7 @@ int find_best_fanout_existing_node(const AlexModelNode<T, P>* parent,
          (sizeof(AlexDataNode<T, P>) + sizeof(void*)) * total_keys / num_keys);
     cost += traversal_cost;
     fanout_costs.push_back(cost);
+
     // stop after expanding fanout increases cost twice in a row
     if (fanout_costs.size() >= 3 &&
         fanout_costs[fanout_costs.size() - 1] >
@@ -433,12 +666,15 @@ int find_best_fanout_existing_node(const AlexModelNode<T, P>* parent,
             fanout_costs[fanout_costs.size() - 3]) {
       break;
     }
+
     if (cost < best_cost) {
       best_cost = cost;
       best_level = fanout_tree_level;
     }
+
     fanout_tree.push_back(new_level);
   }
+
   for (FTNode& tree_node : fanout_tree[best_level]) {
     tree_node.use = true;
   }

@@ -49,7 +49,8 @@ class AlexNode {
   short level_ = 0;
 
   // Both model nodes and data nodes nodes use models
-  LinearModel<T> model_;
+  //LinearModel<T> model_;
+  PolynomialModel<T> model_;
 
   // Could be either the expected or empirical cost, depending on how this field
   // is used
@@ -750,255 +751,480 @@ class AlexDataNode : public AlexNode<T, P> {
     return cost;
   }
 
+  // // Computes the expected cost of a data node constructed using the input dense
+  // // array of keys
+  // // Assumes existing_model is trained on the dense array of keys
+  // static double compute_expected_cost(
+  //     const V* values, int num_keys, double density,
+  //     double expected_insert_frac,
+  //     const LinearModel<T>* existing_model = nullptr, bool use_sampling = false,
+  //     DataNodeStats* stats = nullptr) {
+  //   if (use_sampling) {
+  //     return compute_expected_cost_sampling(values, num_keys, density,
+  //                                           expected_insert_frac,
+  //                                           existing_model, stats);
+  //   }
+
+  //   if (num_keys == 0) {
+  //     return 0;
+  //   }
+
+  //   int data_capacity =
+  //       std::max(static_cast<int>(num_keys / density), num_keys + 1);
+
+  //   // Compute what the node's model would be
+  //   LinearModel<T> model;
+  //   if (existing_model == nullptr) {
+  //     build_model(values, num_keys, &model);
+  //   } else {
+  //     model.a_ = existing_model->a_;
+  //     model.b_ = existing_model->b_;
+  //   }
+  //   model.expand(static_cast<double>(data_capacity) / num_keys);
+
+  //   // Compute expected stats in order to compute the expected cost
+  //   double cost = 0;
+  //   double expected_avg_exp_search_iterations = 0;
+  //   double expected_avg_shifts = 0;
+  //   if (expected_insert_frac == 0) {
+  //     ExpectedSearchIterationsAccumulator acc;
+  //     build_node_implicit(values, num_keys, data_capacity, &acc, &model);
+  //     expected_avg_exp_search_iterations = acc.get_stat();
+  //   } else {
+  //     ExpectedIterationsAndShiftsAccumulator acc(data_capacity);
+  //     build_node_implicit(values, num_keys, data_capacity, &acc, &model);
+  //     expected_avg_exp_search_iterations =
+  //         acc.get_expected_num_search_iterations();
+  //     expected_avg_shifts = acc.get_expected_num_shifts();
+  //   }
+  //   cost = kExpSearchIterationsWeight * expected_avg_exp_search_iterations +
+  //          kShiftsWeight * expected_avg_shifts * expected_insert_frac;
+
+  //   if (stats) {
+  //     stats->num_search_iterations = expected_avg_exp_search_iterations;
+  //     stats->num_shifts = expected_avg_shifts;
+  //   }
+
+  //   return cost;
+  // }
+
   // Computes the expected cost of a data node constructed using the input dense
-  // array of keys
-  // Assumes existing_model is trained on the dense array of keys
-  static double compute_expected_cost(
-      const V* values, int num_keys, double density,
-      double expected_insert_frac,
-      const LinearModel<T>* existing_model = nullptr, bool use_sampling = false,
-      DataNodeStats* stats = nullptr) {
-    if (use_sampling) {
-      return compute_expected_cost_sampling(values, num_keys, density,
-                                            expected_insert_frac,
-                                            existing_model, stats);
-    }
+// array of keys
+// Assumes existing_model is trained on the dense array of keys
+static double compute_expected_cost(
+  const V* values, int num_keys, double density,
+  double expected_insert_frac,
+  const PolynomialModel<T>* existing_model = nullptr, bool use_sampling = false,
+  DataNodeStats* stats = nullptr) {
 
-    if (num_keys == 0) {
-      return 0;
-    }
+if (use_sampling) {
+  return compute_expected_cost_sampling(values, num_keys, density,
+                                        expected_insert_frac,
+                                        existing_model, stats);
+}
 
-    int data_capacity =
-        std::max(static_cast<int>(num_keys / density), num_keys + 1);
+if (num_keys == 0) {
+  return 0;
+}
 
-    // Compute what the node's model would be
-    LinearModel<T> model;
-    if (existing_model == nullptr) {
-      build_model(values, num_keys, &model);
-    } else {
-      model.a_ = existing_model->a_;
-      model.b_ = existing_model->b_;
-    }
-    model.expand(static_cast<double>(data_capacity) / num_keys);
+int data_capacity =
+    std::max(static_cast<int>(num_keys / density), num_keys + 1);
 
-    // Compute expected stats in order to compute the expected cost
-    double cost = 0;
-    double expected_avg_exp_search_iterations = 0;
-    double expected_avg_shifts = 0;
-    if (expected_insert_frac == 0) {
-      ExpectedSearchIterationsAccumulator acc;
-      build_node_implicit(values, num_keys, data_capacity, &acc, &model);
-      expected_avg_exp_search_iterations = acc.get_stat();
-    } else {
-      ExpectedIterationsAndShiftsAccumulator acc(data_capacity);
-      build_node_implicit(values, num_keys, data_capacity, &acc, &model);
-      expected_avg_exp_search_iterations =
-          acc.get_expected_num_search_iterations();
-      expected_avg_shifts = acc.get_expected_num_shifts();
-    }
-    cost = kExpSearchIterationsWeight * expected_avg_exp_search_iterations +
-           kShiftsWeight * expected_avg_shifts * expected_insert_frac;
+// Compute what the node's model would be
+PolynomialModel<T> model;
+if (existing_model == nullptr) {
+  build_model(values, num_keys, &model);
+} else {
+  model.a_ = existing_model->a_;
+  model.b_ = existing_model->b_;
+  model.c_ = existing_model->c_;
+}
 
-    if (stats) {
-      stats->num_search_iterations = expected_avg_exp_search_iterations;
-      stats->num_shifts = expected_avg_shifts;
-    }
+model.expand(static_cast<double>(data_capacity) / num_keys);
 
-    return cost;
-  }
+// Compute expected stats in order to compute the expected cost
+double cost = 0;
+double expected_avg_exp_search_iterations = 0;
+double expected_avg_shifts = 0;
+if (expected_insert_frac == 0) {
+  ExpectedSearchIterationsAccumulator acc;
+  build_node_implicit(values, num_keys, data_capacity, &acc, &model);
+  expected_avg_exp_search_iterations = acc.get_stat();
+} else {
+  ExpectedIterationsAndShiftsAccumulator acc(data_capacity);
+  build_node_implicit(values, num_keys, data_capacity, &acc, &model);
+  expected_avg_exp_search_iterations =
+      acc.get_expected_num_search_iterations();
+  expected_avg_shifts = acc.get_expected_num_shifts();
+}
+
+cost = kExpSearchIterationsWeight * expected_avg_exp_search_iterations +
+       kShiftsWeight * expected_avg_shifts * expected_insert_frac;
+
+if (stats) {
+  stats->num_search_iterations = expected_avg_exp_search_iterations;
+  stats->num_shifts = expected_avg_shifts;
+}
+
+return cost;
+}
+
+
+  // // Helper function for compute_expected_cost
+  // // Implicitly build the data node in order to collect the stats
+  // static void build_node_implicit(const V* values, int num_keys,
+  //                                 int data_capacity, StatAccumulator* acc,
+  //                                 const LinearModel<T>* model) {
+  //   int last_position = -1;
+  //   int keys_remaining = num_keys;
+  //   for (int i = 0; i < num_keys; i++) {
+  //     int predicted_position = std::max(
+  //         0, std::min(data_capacity - 1, model->predict(values[i].first)));
+  //     int actual_position =
+  //         std::max<int>(predicted_position, last_position + 1);
+  //     int positions_remaining = data_capacity - actual_position;
+  //     if (positions_remaining < keys_remaining) {
+  //       actual_position = data_capacity - keys_remaining;
+  //       for (int j = i; j < num_keys; j++) {
+  //         predicted_position = std::max(
+  //             0, std::min(data_capacity - 1, model->predict(values[j].first)));
+  //         acc->accumulate(actual_position, predicted_position);
+  //         actual_position++;
+  //       }
+  //       break;
+  //     }
+  //     acc->accumulate(actual_position, predicted_position);
+  //     last_position = actual_position;
+  //     keys_remaining--;
+  //   }
+  // }
 
   // Helper function for compute_expected_cost
-  // Implicitly build the data node in order to collect the stats
-  static void build_node_implicit(const V* values, int num_keys,
-                                  int data_capacity, StatAccumulator* acc,
-                                  const LinearModel<T>* model) {
-    int last_position = -1;
-    int keys_remaining = num_keys;
-    for (int i = 0; i < num_keys; i++) {
-      int predicted_position = std::max(
-          0, std::min(data_capacity - 1, model->predict(values[i].first)));
-      int actual_position =
-          std::max<int>(predicted_position, last_position + 1);
-      int positions_remaining = data_capacity - actual_position;
-      if (positions_remaining < keys_remaining) {
-        actual_position = data_capacity - keys_remaining;
-        for (int j = i; j < num_keys; j++) {
-          predicted_position = std::max(
-              0, std::min(data_capacity - 1, model->predict(values[j].first)));
-          acc->accumulate(actual_position, predicted_position);
-          actual_position++;
-        }
-        break;
+// Implicitly build the data node in order to collect the stats
+static void build_node_implicit(const V* values, int num_keys,
+                                int data_capacity, StatAccumulator* acc,
+                                const PolynomialModel<T>* model) {
+  int last_position = -1;
+  int keys_remaining = num_keys;
+  for (int i = 0; i < num_keys; i++) {
+    int predicted_position = std::max(
+        0, std::min(data_capacity - 1, model->predict(values[i].first)));
+    int actual_position =
+        std::max<int>(predicted_position, last_position + 1);
+    int positions_remaining = data_capacity - actual_position;
+    if (positions_remaining < keys_remaining) {
+      actual_position = data_capacity - keys_remaining;
+      for (int j = i; j < num_keys; j++) {
+        predicted_position = std::max(
+            0, std::min(data_capacity - 1, model->predict(values[j].first)));
+        acc->accumulate(actual_position, predicted_position);
+        actual_position++;
       }
-      acc->accumulate(actual_position, predicted_position);
-      last_position = actual_position;
-      keys_remaining--;
+      break;
     }
+    acc->accumulate(actual_position, predicted_position);
+    last_position = actual_position;
+    keys_remaining--;
   }
+}
+
 
   // Using sampling, approximates the expected cost of a data node constructed
   // using the input dense array of keys
   // Assumes existing_model is trained on the dense array of keys
   // Uses progressive sampling: keep increasing the sample size until the
   // computed stats stop changing drastically
+  // static double compute_expected_cost_sampling(
+  //     const V* values, int num_keys, double density,
+  //     double expected_insert_frac,
+  //     const LinearModel<T>* existing_model = nullptr,
+  //     DataNodeStats* stats = nullptr) {
+  //   const static int min_sample_size = 25;
+
+  //   // Stop increasing sample size if relative diff of stats between samples is
+  //   // less than this
+  //   const static double rel_diff_threshold = 0.2;
+
+  //   // Equivalent threshold in log2-space
+  //   const static double abs_log2_diff_threshold =
+  //       std::log2(1 + rel_diff_threshold);
+
+  //   // Increase sample size by this many times each iteration
+  //   const static int sample_size_multiplier = 2;
+
+  //   // If num_keys is below this threshold, we compute entropy exactly
+  //   const static int exact_computation_size_threshold =
+  //       (min_sample_size * sample_size_multiplier * sample_size_multiplier * 2);
+
+  //   // Target fraction of the keys to use in the initial sample
+  //   const static double init_sample_frac = 0.01;
+
+  //   // If the number of keys is sufficiently small, we do not sample
+  //   if (num_keys < exact_computation_size_threshold) {
+  //     return compute_expected_cost(values, num_keys, density,
+  //                                  expected_insert_frac, existing_model, false,
+  //                                  stats);
+  //   }
+
+  //   LinearModel<T> model;  // trained for full dense array
+  //   if (existing_model == nullptr) {
+  //     build_model(values, num_keys, &model);
+  //   } else {
+  //     model.a_ = existing_model->a_;
+  //     model.b_ = existing_model->b_;
+  //   }
+
+  //   // Compute initial sample size and step size
+  //   // Right now, sample_num_keys holds the target sample num keys
+  //   int sample_num_keys = std::max(
+  //       static_cast<int>(num_keys * init_sample_frac), min_sample_size);
+  //   int step_size = 1;
+  //   double tmp_sample_size =
+  //       num_keys;  // this helps us determine the right sample size
+  //   while (tmp_sample_size >= sample_num_keys) {
+  //     tmp_sample_size /= sample_size_multiplier;
+  //     step_size *= sample_size_multiplier;
+  //   }
+  //   step_size /= sample_size_multiplier;
+  //   sample_num_keys =
+  //       num_keys /
+  //       step_size;  // now sample_num_keys is the actual sample num keys
+
+  //   std::vector<SampleDataNodeStats>
+  //       sample_stats;  // stats computed usinig each sample
+  //   bool compute_shifts = expected_insert_frac !=
+  //                         0;  // whether we need to compute expected shifts
+  //   double log2_num_keys = std::log2(num_keys);
+  //   double expected_full_search_iters =
+  //       0;  // extrapolated estimate for search iters on the full array
+  //   double expected_full_shifts =
+  //       0;  // extrapolated estimate shifts on the full array
+  //   bool search_iters_computed =
+  //       false;  // set to true when search iters is accurately computed
+  //   bool shifts_computed =
+  //       false;  // set to true when shifts is accurately computed
+
+  //   // Progressively increase sample size
+  //   while (true) {
+  //     int sample_data_capacity = std::max(
+  //         static_cast<int>(sample_num_keys / density), sample_num_keys + 1);
+  //     LinearModel<T> sample_model(model.a_, model.b_);
+  //     sample_model.expand(static_cast<double>(sample_data_capacity) / num_keys);
+
+  //     // Compute stats using the sample
+  //     if (expected_insert_frac == 0) {
+  //       ExpectedSearchIterationsAccumulator acc;
+  //       build_node_implicit_sampling(values, num_keys, sample_num_keys,
+  //                                    sample_data_capacity, step_size, &acc,
+  //                                    &sample_model);
+  //       sample_stats.push_back({std::log2(sample_num_keys), acc.get_stat(), 0});
+  //     } else {
+  //       ExpectedIterationsAndShiftsAccumulator acc(sample_data_capacity);
+  //       build_node_implicit_sampling(values, num_keys, sample_num_keys,
+  //                                    sample_data_capacity, step_size, &acc,
+  //                                    &sample_model);
+  //       sample_stats.push_back({std::log2(sample_num_keys),
+  //                               acc.get_expected_num_search_iterations(),
+  //                               std::log2(acc.get_expected_num_shifts())});
+  //     }
+
+  //     if (sample_stats.size() >= 3) {
+  //       // Check if the diff in stats is sufficiently small
+  //       SampleDataNodeStats& s0 = sample_stats[sample_stats.size() - 3];
+  //       SampleDataNodeStats& s1 = sample_stats[sample_stats.size() - 2];
+  //       SampleDataNodeStats& s2 = sample_stats[sample_stats.size() - 1];
+  //       // (y1 - y0) / (x1 - x0) = (y2 - y1) / (x2 - x1) --> y2 = (y1 - y0) /
+  //       // (x1 - x0) * (x2 - x1) + y1
+  //       double expected_s2_search_iters =
+  //           (s1.num_search_iterations - s0.num_search_iterations) /
+  //               (s1.log2_sample_size - s0.log2_sample_size) *
+  //               (s2.log2_sample_size - s1.log2_sample_size) +
+  //           s1.num_search_iterations;
+  //       double rel_diff =
+  //           std::abs((s2.num_search_iterations - expected_s2_search_iters) /
+  //                    s2.num_search_iterations);
+  //       if (rel_diff <= rel_diff_threshold || num_keys <= 2 * sample_num_keys) {
+  //         search_iters_computed = true;
+  //         expected_full_search_iters =
+  //             (s2.num_search_iterations - s1.num_search_iterations) /
+  //                 (s2.log2_sample_size - s1.log2_sample_size) *
+  //                 (log2_num_keys - s2.log2_sample_size) +
+  //             s2.num_search_iterations;
+  //       }
+  //       if (compute_shifts) {
+  //         double expected_s2_log2_shifts =
+  //             (s1.log2_num_shifts - s0.log2_num_shifts) /
+  //                 (s1.log2_sample_size - s0.log2_sample_size) *
+  //                 (s2.log2_sample_size - s1.log2_sample_size) +
+  //             s1.log2_num_shifts;
+  //         double abs_diff =
+  //             std::abs((s2.log2_num_shifts - expected_s2_log2_shifts) /
+  //                      s2.log2_num_shifts);
+  //         if (abs_diff <= abs_log2_diff_threshold ||
+  //             num_keys <= 2 * sample_num_keys) {
+  //           shifts_computed = true;
+  //           double expected_full_log2_shifts =
+  //               (s2.log2_num_shifts - s1.log2_num_shifts) /
+  //                   (s2.log2_sample_size - s1.log2_sample_size) *
+  //                   (log2_num_keys - s2.log2_sample_size) +
+  //               s2.log2_num_shifts;
+  //           expected_full_shifts = std::pow(2, expected_full_log2_shifts);
+  //         }
+  //       }
+
+  //       // If diff in stats is sufficiently small, return the approximate
+  //       // expected cost
+  //       if ((expected_insert_frac == 0 && search_iters_computed) ||
+  //           (expected_insert_frac > 0 && search_iters_computed &&
+  //            shifts_computed)) {
+  //         double cost =
+  //             kExpSearchIterationsWeight * expected_full_search_iters +
+  //             kShiftsWeight * expected_full_shifts * expected_insert_frac;
+  //         if (stats) {
+  //           stats->num_search_iterations = expected_full_search_iters;
+  //           stats->num_shifts = expected_full_shifts;
+  //         }
+  //         return cost;
+  //       }
+  //     }
+
+  //     step_size /= sample_size_multiplier;
+  //     sample_num_keys = num_keys / step_size;
+  //   }
+  // }
+
   static double compute_expected_cost_sampling(
-      const V* values, int num_keys, double density,
-      double expected_insert_frac,
-      const LinearModel<T>* existing_model = nullptr,
-      DataNodeStats* stats = nullptr) {
-    const static int min_sample_size = 25;
+    const V* values, int num_keys, double density,
+    double expected_insert_frac,
+    const PolynomialModel<T>* existing_model = nullptr,
+    DataNodeStats* stats = nullptr) {
+  const static int min_sample_size = 25;
+  const static double rel_diff_threshold = 0.2;
+  const static double abs_log2_diff_threshold = std::log2(1 + rel_diff_threshold);
+  const static int sample_size_multiplier = 2;
+  const static int exact_computation_size_threshold =
+      (min_sample_size * sample_size_multiplier * sample_size_multiplier * 2);
+  const static double init_sample_frac = 0.01;
 
-    // Stop increasing sample size if relative diff of stats between samples is
-    // less than this
-    const static double rel_diff_threshold = 0.2;
+  if (num_keys < exact_computation_size_threshold) {
+    return compute_expected_cost(values, num_keys, density,
+                                 expected_insert_frac, existing_model, false,
+                                 stats);
+  }
 
-    // Equivalent threshold in log2-space
-    const static double abs_log2_diff_threshold =
-        std::log2(1 + rel_diff_threshold);
+  PolynomialModel<T> model;  // trained on full dense array
+  if (existing_model == nullptr) {
+    build_model(values, num_keys, &model);
+  } else {
+    model.a_ = existing_model->a_;
+    model.b_ = existing_model->b_;
+    model.c_ = existing_model->c_;
+  }
 
-    // Increase sample size by this many times each iteration
-    const static int sample_size_multiplier = 2;
+  // Compute initial sample size and step size
+  int sample_num_keys = std::max(
+      static_cast<int>(num_keys * init_sample_frac), min_sample_size);
+  int step_size = 1;
+  double tmp_sample_size = num_keys;
+  while (tmp_sample_size >= sample_num_keys) {
+    tmp_sample_size /= sample_size_multiplier;
+    step_size *= sample_size_multiplier;
+  }
+  step_size /= sample_size_multiplier;
+  sample_num_keys = num_keys / step_size;
 
-    // If num_keys is below this threshold, we compute entropy exactly
-    const static int exact_computation_size_threshold =
-        (min_sample_size * sample_size_multiplier * sample_size_multiplier * 2);
+  std::vector<SampleDataNodeStats> sample_stats;
+  bool compute_shifts = expected_insert_frac != 0;
+  double log2_num_keys = std::log2(num_keys);
+  double expected_full_search_iters = 0;
+  double expected_full_shifts = 0;
+  bool search_iters_computed = false;
+  bool shifts_computed = false;
 
-    // Target fraction of the keys to use in the initial sample
-    const static double init_sample_frac = 0.01;
+  // Progressively increase sample size
+  while (true) {
+    int sample_data_capacity = std::max(
+        static_cast<int>(sample_num_keys / density), sample_num_keys + 1);
+    PolynomialModel<T> sample_model(model.a_, model.b_, model.c_);
+    sample_model.expand(static_cast<double>(sample_data_capacity) / num_keys);
 
-    // If the number of keys is sufficiently small, we do not sample
-    if (num_keys < exact_computation_size_threshold) {
-      return compute_expected_cost(values, num_keys, density,
-                                   expected_insert_frac, existing_model, false,
-                                   stats);
-    }
-
-    LinearModel<T> model;  // trained for full dense array
-    if (existing_model == nullptr) {
-      build_model(values, num_keys, &model);
+    if (expected_insert_frac == 0) {
+      ExpectedSearchIterationsAccumulator acc;
+      build_node_implicit_sampling(values, num_keys, sample_num_keys,
+                                   sample_data_capacity, step_size, &acc,
+                                   &sample_model);
+      sample_stats.push_back({std::log2(sample_num_keys), acc.get_stat(), 0});
     } else {
-      model.a_ = existing_model->a_;
-      model.b_ = existing_model->b_;
+      ExpectedIterationsAndShiftsAccumulator acc(sample_data_capacity);
+      build_node_implicit_sampling(values, num_keys, sample_num_keys,
+                                   sample_data_capacity, step_size, &acc,
+                                   &sample_model);
+      sample_stats.push_back({std::log2(sample_num_keys),
+                              acc.get_expected_num_search_iterations(),
+                              std::log2(acc.get_expected_num_shifts())});
     }
 
-    // Compute initial sample size and step size
-    // Right now, sample_num_keys holds the target sample num keys
-    int sample_num_keys = std::max(
-        static_cast<int>(num_keys * init_sample_frac), min_sample_size);
-    int step_size = 1;
-    double tmp_sample_size =
-        num_keys;  // this helps us determine the right sample size
-    while (tmp_sample_size >= sample_num_keys) {
-      tmp_sample_size /= sample_size_multiplier;
-      step_size *= sample_size_multiplier;
-    }
-    step_size /= sample_size_multiplier;
-    sample_num_keys =
-        num_keys /
-        step_size;  // now sample_num_keys is the actual sample num keys
+    if (sample_stats.size() >= 3) {
+      SampleDataNodeStats& s0 = sample_stats[sample_stats.size() - 3];
+      SampleDataNodeStats& s1 = sample_stats[sample_stats.size() - 2];
+      SampleDataNodeStats& s2 = sample_stats[sample_stats.size() - 1];
 
-    std::vector<SampleDataNodeStats>
-        sample_stats;  // stats computed usinig each sample
-    bool compute_shifts = expected_insert_frac !=
-                          0;  // whether we need to compute expected shifts
-    double log2_num_keys = std::log2(num_keys);
-    double expected_full_search_iters =
-        0;  // extrapolated estimate for search iters on the full array
-    double expected_full_shifts =
-        0;  // extrapolated estimate shifts on the full array
-    bool search_iters_computed =
-        false;  // set to true when search iters is accurately computed
-    bool shifts_computed =
-        false;  // set to true when shifts is accurately computed
-
-    // Progressively increase sample size
-    while (true) {
-      int sample_data_capacity = std::max(
-          static_cast<int>(sample_num_keys / density), sample_num_keys + 1);
-      LinearModel<T> sample_model(model.a_, model.b_);
-      sample_model.expand(static_cast<double>(sample_data_capacity) / num_keys);
-
-      // Compute stats using the sample
-      if (expected_insert_frac == 0) {
-        ExpectedSearchIterationsAccumulator acc;
-        build_node_implicit_sampling(values, num_keys, sample_num_keys,
-                                     sample_data_capacity, step_size, &acc,
-                                     &sample_model);
-        sample_stats.push_back({std::log2(sample_num_keys), acc.get_stat(), 0});
-      } else {
-        ExpectedIterationsAndShiftsAccumulator acc(sample_data_capacity);
-        build_node_implicit_sampling(values, num_keys, sample_num_keys,
-                                     sample_data_capacity, step_size, &acc,
-                                     &sample_model);
-        sample_stats.push_back({std::log2(sample_num_keys),
-                                acc.get_expected_num_search_iterations(),
-                                std::log2(acc.get_expected_num_shifts())});
+      double expected_s2_search_iters =
+          (s1.num_search_iterations - s0.num_search_iterations) /
+              (s1.log2_sample_size - s0.log2_sample_size) *
+              (s2.log2_sample_size - s1.log2_sample_size) +
+          s1.num_search_iterations;
+      double rel_diff =
+          std::abs((s2.num_search_iterations - expected_s2_search_iters) /
+                   s2.num_search_iterations);
+      if (rel_diff <= rel_diff_threshold || num_keys <= 2 * sample_num_keys) {
+        search_iters_computed = true;
+        expected_full_search_iters =
+            (s2.num_search_iterations - s1.num_search_iterations) /
+                (s2.log2_sample_size - s1.log2_sample_size) *
+                (log2_num_keys - s2.log2_sample_size) +
+            s2.num_search_iterations;
       }
 
-      if (sample_stats.size() >= 3) {
-        // Check if the diff in stats is sufficiently small
-        SampleDataNodeStats& s0 = sample_stats[sample_stats.size() - 3];
-        SampleDataNodeStats& s1 = sample_stats[sample_stats.size() - 2];
-        SampleDataNodeStats& s2 = sample_stats[sample_stats.size() - 1];
-        // (y1 - y0) / (x1 - x0) = (y2 - y1) / (x2 - x1) --> y2 = (y1 - y0) /
-        // (x1 - x0) * (x2 - x1) + y1
-        double expected_s2_search_iters =
-            (s1.num_search_iterations - s0.num_search_iterations) /
+      if (compute_shifts) {
+        double expected_s2_log2_shifts =
+            (s1.log2_num_shifts - s0.log2_num_shifts) /
                 (s1.log2_sample_size - s0.log2_sample_size) *
                 (s2.log2_sample_size - s1.log2_sample_size) +
-            s1.num_search_iterations;
-        double rel_diff =
-            std::abs((s2.num_search_iterations - expected_s2_search_iters) /
-                     s2.num_search_iterations);
-        if (rel_diff <= rel_diff_threshold || num_keys <= 2 * sample_num_keys) {
-          search_iters_computed = true;
-          expected_full_search_iters =
-              (s2.num_search_iterations - s1.num_search_iterations) /
+            s1.log2_num_shifts;
+        double abs_diff =
+            std::abs((s2.log2_num_shifts - expected_s2_log2_shifts) /
+                     s2.log2_num_shifts);
+        if (abs_diff <= abs_log2_diff_threshold ||
+            num_keys <= 2 * sample_num_keys) {
+          shifts_computed = true;
+          double expected_full_log2_shifts =
+              (s2.log2_num_shifts - s1.log2_num_shifts) /
                   (s2.log2_sample_size - s1.log2_sample_size) *
                   (log2_num_keys - s2.log2_sample_size) +
-              s2.num_search_iterations;
-        }
-        if (compute_shifts) {
-          double expected_s2_log2_shifts =
-              (s1.log2_num_shifts - s0.log2_num_shifts) /
-                  (s1.log2_sample_size - s0.log2_sample_size) *
-                  (s2.log2_sample_size - s1.log2_sample_size) +
-              s1.log2_num_shifts;
-          double abs_diff =
-              std::abs((s2.log2_num_shifts - expected_s2_log2_shifts) /
-                       s2.log2_num_shifts);
-          if (abs_diff <= abs_log2_diff_threshold ||
-              num_keys <= 2 * sample_num_keys) {
-            shifts_computed = true;
-            double expected_full_log2_shifts =
-                (s2.log2_num_shifts - s1.log2_num_shifts) /
-                    (s2.log2_sample_size - s1.log2_sample_size) *
-                    (log2_num_keys - s2.log2_sample_size) +
-                s2.log2_num_shifts;
-            expected_full_shifts = std::pow(2, expected_full_log2_shifts);
-          }
-        }
-
-        // If diff in stats is sufficiently small, return the approximate
-        // expected cost
-        if ((expected_insert_frac == 0 && search_iters_computed) ||
-            (expected_insert_frac > 0 && search_iters_computed &&
-             shifts_computed)) {
-          double cost =
-              kExpSearchIterationsWeight * expected_full_search_iters +
-              kShiftsWeight * expected_full_shifts * expected_insert_frac;
-          if (stats) {
-            stats->num_search_iterations = expected_full_search_iters;
-            stats->num_shifts = expected_full_shifts;
-          }
-          return cost;
+              s2.log2_num_shifts;
+          expected_full_shifts = std::pow(2, expected_full_log2_shifts);
         }
       }
 
-      step_size /= sample_size_multiplier;
-      sample_num_keys = num_keys / step_size;
+      if ((expected_insert_frac == 0 && search_iters_computed) ||
+          (expected_insert_frac > 0 && search_iters_computed && shifts_computed)) {
+        double cost =
+            kExpSearchIterationsWeight * expected_full_search_iters +
+            kShiftsWeight * expected_full_shifts * expected_insert_frac;
+        if (stats) {
+          stats->num_search_iterations = expected_full_search_iters;
+          stats->num_shifts = expected_full_shifts;
+        }
+        return cost;
+      }
     }
+
+    step_size /= sample_size_multiplier;
+    sample_num_keys = num_keys / step_size;
   }
+}
+
 
   // Helper function for compute_expected_cost_sampling
   // Implicitly build the data node in order to collect the stats
@@ -1006,133 +1232,265 @@ class AlexDataNode : public AlexNode<T, P> {
   // sample_num_keys and sample_data_capacity refer to a data node that is
   // created only over the sample
   // sample_model is trained for the sampled data node
+  // static void build_node_implicit_sampling(const V* values, int num_keys,
+  //                                          int sample_num_keys,
+  //                                          int sample_data_capacity,
+  //                                          int step_size, StatAccumulator* ent,
+  //                                          const LinearModel<T>* sample_model) {
+  //   int last_position = -1;
+  //   int sample_keys_remaining = sample_num_keys;
+  //   for (int i = 0; i < num_keys; i += step_size) {
+  //     int predicted_position =
+  //         std::max(0, std::min(sample_data_capacity - 1,
+  //                              sample_model->predict(values[i].first)));
+  //     int actual_position =
+  //         std::max<int>(predicted_position, last_position + 1);
+  //     int positions_remaining = sample_data_capacity - actual_position;
+  //     if (positions_remaining < sample_keys_remaining) {
+  //       actual_position = sample_data_capacity - sample_keys_remaining;
+  //       for (int j = i; j < num_keys; j += step_size) {
+  //         predicted_position =
+  //             std::max(0, std::min(sample_data_capacity - 1,
+  //                                  sample_model->predict(values[j].first)));
+  //         ent->accumulate(actual_position, predicted_position);
+  //         actual_position++;
+  //       }
+  //       break;
+  //     }
+  //     ent->accumulate(actual_position, predicted_position);
+  //     last_position = actual_position;
+  //     sample_keys_remaining--;
+  //   }
+  // }
+
   static void build_node_implicit_sampling(const V* values, int num_keys,
-                                           int sample_num_keys,
-                                           int sample_data_capacity,
-                                           int step_size, StatAccumulator* ent,
-                                           const LinearModel<T>* sample_model) {
-    int last_position = -1;
-    int sample_keys_remaining = sample_num_keys;
-    for (int i = 0; i < num_keys; i += step_size) {
-      int predicted_position =
-          std::max(0, std::min(sample_data_capacity - 1,
-                               sample_model->predict(values[i].first)));
-      int actual_position =
-          std::max<int>(predicted_position, last_position + 1);
-      int positions_remaining = sample_data_capacity - actual_position;
-      if (positions_remaining < sample_keys_remaining) {
-        actual_position = sample_data_capacity - sample_keys_remaining;
-        for (int j = i; j < num_keys; j += step_size) {
-          predicted_position =
-              std::max(0, std::min(sample_data_capacity - 1,
-                                   sample_model->predict(values[j].first)));
-          ent->accumulate(actual_position, predicted_position);
-          actual_position++;
-        }
-        break;
+                                         int sample_num_keys,
+                                         int sample_data_capacity,
+                                         int step_size, StatAccumulator* ent,
+                                         const PolynomialModel<T>* sample_model) {
+  int last_position = -1;
+  int sample_keys_remaining = sample_num_keys;
+  for (int i = 0; i < num_keys; i += step_size) {
+    int predicted_position =
+        std::max(0, std::min(sample_data_capacity - 1,
+                             sample_model->predict(values[i].first)));
+    int actual_position = std::max<int>(predicted_position, last_position + 1);
+    int positions_remaining = sample_data_capacity - actual_position;
+
+    if (positions_remaining < sample_keys_remaining) {
+      actual_position = sample_data_capacity - sample_keys_remaining;
+      for (int j = i; j < num_keys; j += step_size) {
+        predicted_position =
+            std::max(0, std::min(sample_data_capacity - 1,
+                                 sample_model->predict(values[j].first)));
+        ent->accumulate(actual_position, predicted_position);
+        actual_position++;
       }
-      ent->accumulate(actual_position, predicted_position);
-      last_position = actual_position;
-      sample_keys_remaining--;
+      break;
     }
+
+    ent->accumulate(actual_position, predicted_position);
+    last_position = actual_position;
+    sample_keys_remaining--;
   }
+}
+
 
   // Computes the expected cost of a data node constructed using the keys
   // between left and right in the
   // key/data_slots of an existing node
   // Assumes existing_model is trained on the dense array of keys
+  // static double compute_expected_cost_from_existing(
+  //     const self_type* node, int left, int right, double density,
+  //     double expected_insert_frac,
+  //     const LinearModel<T>* existing_model = nullptr,
+  //     DataNodeStats* stats = nullptr) {
+  //   assert(left >= 0 && right <= node->data_capacity_);
+
+  //   LinearModel<T> model;
+  //   int num_actual_keys = 0;
+  //   if (existing_model == nullptr) {
+  //     const_iterator_type it(node, left);
+  //     LinearModelBuilder<T> builder(&model);
+  //     for (int i = 0; it.cur_idx_ < right && !it.is_end(); it++, i++) {
+  //       builder.add(it.key(), i);
+  //       num_actual_keys++;
+  //     }
+  //     builder.build();
+  //   } else {
+  //     num_actual_keys = node->num_keys_in_range(left, right);
+  //     model.a_ = existing_model->a_;
+  //     model.b_ = existing_model->b_;
+  //   }
+
+  //   if (num_actual_keys == 0) {
+  //     return 0;
+  //   }
+  //   int data_capacity = std::max(static_cast<int>(num_actual_keys / density),
+  //                                num_actual_keys + 1);
+  //   model.expand(static_cast<double>(data_capacity) / num_actual_keys);
+
+  //   // Compute expected stats in order to compute the expected cost
+  //   double cost = 0;
+  //   double expected_avg_exp_search_iterations = 0;
+  //   double expected_avg_shifts = 0;
+  //   if (expected_insert_frac == 0) {
+  //     ExpectedSearchIterationsAccumulator acc;
+  //     build_node_implicit_from_existing(node, left, right, num_actual_keys,
+  //                                       data_capacity, &acc, &model);
+  //     expected_avg_exp_search_iterations = acc.get_stat();
+  //   } else {
+  //     ExpectedIterationsAndShiftsAccumulator acc(data_capacity);
+  //     build_node_implicit_from_existing(node, left, right, num_actual_keys,
+  //                                       data_capacity, &acc, &model);
+  //     expected_avg_exp_search_iterations =
+  //         acc.get_expected_num_search_iterations();
+  //     expected_avg_shifts = acc.get_expected_num_shifts();
+  //   }
+  //   cost = kExpSearchIterationsWeight * expected_avg_exp_search_iterations +
+  //          kShiftsWeight * expected_avg_shifts * expected_insert_frac;
+
+  //   if (stats) {
+  //     stats->num_search_iterations = expected_avg_exp_search_iterations;
+  //     stats->num_shifts = expected_avg_shifts;
+  //   }
+
+  //   return cost;
+  // }
+
   static double compute_expected_cost_from_existing(
-      const self_type* node, int left, int right, double density,
-      double expected_insert_frac,
-      const LinearModel<T>* existing_model = nullptr,
-      DataNodeStats* stats = nullptr) {
-    assert(left >= 0 && right <= node->data_capacity_);
+    const self_type* node, int left, int right, double density,
+    double expected_insert_frac,
+    const PolynomialModel<T>* existing_model = nullptr,
+    DataNodeStats* stats = nullptr) {
+  assert(left >= 0 && right <= node->data_capacity_);
 
-    LinearModel<T> model;
-    int num_actual_keys = 0;
-    if (existing_model == nullptr) {
-      const_iterator_type it(node, left);
-      LinearModelBuilder<T> builder(&model);
-      for (int i = 0; it.cur_idx_ < right && !it.is_end(); it++, i++) {
-        builder.add(it.key(), i);
-        num_actual_keys++;
-      }
-      builder.build();
-    } else {
-      num_actual_keys = node->num_keys_in_range(left, right);
-      model.a_ = existing_model->a_;
-      model.b_ = existing_model->b_;
+  PolynomialModel<T> model;
+  int num_actual_keys = 0;
+
+  if (existing_model == nullptr) {
+    const_iterator_type it(node, left);
+    PolynomialModelBuilder<T> builder(&model);
+    for (int i = 0; it.cur_idx_ < right && !it.is_end(); it++, i++) {
+      builder.add(it.key(), i);
+      num_actual_keys++;
     }
-
-    if (num_actual_keys == 0) {
-      return 0;
-    }
-    int data_capacity = std::max(static_cast<int>(num_actual_keys / density),
-                                 num_actual_keys + 1);
-    model.expand(static_cast<double>(data_capacity) / num_actual_keys);
-
-    // Compute expected stats in order to compute the expected cost
-    double cost = 0;
-    double expected_avg_exp_search_iterations = 0;
-    double expected_avg_shifts = 0;
-    if (expected_insert_frac == 0) {
-      ExpectedSearchIterationsAccumulator acc;
-      build_node_implicit_from_existing(node, left, right, num_actual_keys,
-                                        data_capacity, &acc, &model);
-      expected_avg_exp_search_iterations = acc.get_stat();
-    } else {
-      ExpectedIterationsAndShiftsAccumulator acc(data_capacity);
-      build_node_implicit_from_existing(node, left, right, num_actual_keys,
-                                        data_capacity, &acc, &model);
-      expected_avg_exp_search_iterations =
-          acc.get_expected_num_search_iterations();
-      expected_avg_shifts = acc.get_expected_num_shifts();
-    }
-    cost = kExpSearchIterationsWeight * expected_avg_exp_search_iterations +
-           kShiftsWeight * expected_avg_shifts * expected_insert_frac;
-
-    if (stats) {
-      stats->num_search_iterations = expected_avg_exp_search_iterations;
-      stats->num_shifts = expected_avg_shifts;
-    }
-
-    return cost;
+    builder.build();
+  } else {
+    num_actual_keys = node->num_keys_in_range(left, right);
+    model.a_ = existing_model->a_;
+    model.b_ = existing_model->b_;
+    model.c_ = existing_model->c_;
   }
+
+  if (num_actual_keys == 0) {
+    return 0;
+  }
+
+  int data_capacity = std::max(static_cast<int>(num_actual_keys / density),
+                               num_actual_keys + 1);
+  model.expand(static_cast<double>(data_capacity) / num_actual_keys);
+
+  // Compute expected stats in order to compute the expected cost
+  double cost = 0;
+  double expected_avg_exp_search_iterations = 0;
+  double expected_avg_shifts = 0;
+
+  if (expected_insert_frac == 0) {
+    ExpectedSearchIterationsAccumulator acc;
+    build_node_implicit_from_existing(node, left, right, num_actual_keys,
+                                      data_capacity, &acc, &model);
+    expected_avg_exp_search_iterations = acc.get_stat();
+  } else {
+    ExpectedIterationsAndShiftsAccumulator acc(data_capacity);
+    build_node_implicit_from_existing(node, left, right, num_actual_keys,
+                                      data_capacity, &acc, &model);
+    expected_avg_exp_search_iterations =
+        acc.get_expected_num_search_iterations();
+    expected_avg_shifts = acc.get_expected_num_shifts();
+  }
+
+  cost = kExpSearchIterationsWeight * expected_avg_exp_search_iterations +
+         kShiftsWeight * expected_avg_shifts * expected_insert_frac;
+
+  if (stats) {
+    stats->num_search_iterations = expected_avg_exp_search_iterations;
+    stats->num_shifts = expected_avg_shifts;
+  }
+
+  return cost;
+}
+
+
+  // // Helper function for compute_expected_cost
+  // // Implicitly build the data node in order to collect the stats
+  // static void build_node_implicit_from_existing(const self_type* node, int left,
+  //                                               int right, int num_actual_keys,
+  //                                               int data_capacity,
+  //                                               StatAccumulator* acc,
+  //                                               const LinearModel<T>* model) {
+  //   int last_position = -1;
+  //   int keys_remaining = num_actual_keys;
+  //   const_iterator_type it(node, left);
+  //   for (; it.cur_idx_ < right && !it.is_end(); it++) {
+  //     int predicted_position =
+  //         std::max(0, std::min(data_capacity - 1, model->predict(it.key())));
+  //     int actual_position =
+  //         std::max<int>(predicted_position, last_position + 1);
+  //     int positions_remaining = data_capacity - actual_position;
+  //     if (positions_remaining < keys_remaining) {
+  //       actual_position = data_capacity - keys_remaining;
+  //       for (; actual_position < data_capacity; actual_position++, it++) {
+  //         predicted_position = std::max(
+  //             0, std::min(data_capacity - 1, model->predict(it.key())));
+  //         acc->accumulate(actual_position, predicted_position);
+  //       }
+  //       break;
+  //     }
+  //     acc->accumulate(actual_position, predicted_position);
+  //     last_position = actual_position;
+  //     keys_remaining--;
+  //   }
+  // }
 
   // Helper function for compute_expected_cost
-  // Implicitly build the data node in order to collect the stats
-  static void build_node_implicit_from_existing(const self_type* node, int left,
-                                                int right, int num_actual_keys,
-                                                int data_capacity,
-                                                StatAccumulator* acc,
-                                                const LinearModel<T>* model) {
-    int last_position = -1;
-    int keys_remaining = num_actual_keys;
-    const_iterator_type it(node, left);
-    for (; it.cur_idx_ < right && !it.is_end(); it++) {
-      int predicted_position =
-          std::max(0, std::min(data_capacity - 1, model->predict(it.key())));
-      int actual_position =
-          std::max<int>(predicted_position, last_position + 1);
-      int positions_remaining = data_capacity - actual_position;
-      if (positions_remaining < keys_remaining) {
-        actual_position = data_capacity - keys_remaining;
-        for (; actual_position < data_capacity; actual_position++, it++) {
-          predicted_position = std::max(
-              0, std::min(data_capacity - 1, model->predict(it.key())));
-          acc->accumulate(actual_position, predicted_position);
-        }
-        break;
+// Implicitly build the data node in order to collect the stats
+static void build_node_implicit_from_existing(const self_type* node, int left,
+                                              int right, int num_actual_keys,
+                                              int data_capacity,
+                                              StatAccumulator* acc,
+                                              const PolynomialModel<T>* model) {
+  int last_position = -1;
+  int keys_remaining = num_actual_keys;
+  const_iterator_type it(node, left);
+
+  for (; it.cur_idx_ < right && !it.is_end(); it++) {
+    int predicted_position =
+        std::max(0, std::min(data_capacity - 1, model->predict(it.key())));
+    int actual_position = std::max<int>(predicted_position, last_position + 1);
+    int positions_remaining = data_capacity - actual_position;
+
+    if (positions_remaining < keys_remaining) {
+      actual_position = data_capacity - keys_remaining;
+      for (; actual_position < data_capacity && it.cur_idx_ < right && !it.is_end();
+           actual_position++, it++) {
+        predicted_position =
+            std::max(0, std::min(data_capacity - 1, model->predict(it.key())));
+        acc->accumulate(actual_position, predicted_position);
       }
-      acc->accumulate(actual_position, predicted_position);
-      last_position = actual_position;
-      keys_remaining--;
+      break;
     }
+
+    acc->accumulate(actual_position, predicted_position);
+    last_position = actual_position;
+    keys_remaining--;
   }
+}
+
 
   /*** Bulk loading and model building ***/
 
-  // Initalize key/payload/bitmap arrays and relevant metadata
+//   // Initalize key/payload/bitmap arrays and relevant metadata
   void initialize(int num_keys, double density) {
     num_keys_ = num_keys;
     data_capacity_ =
@@ -1151,296 +1509,583 @@ class AlexDataNode : public AlexNode<T, P> {
 #endif
   }
 
-  // Assumes pretrained_model is trained on dense array of keys
-  void bulk_load(const V values[], int num_keys,
-                 const LinearModel<T>* pretrained_model = nullptr,
-                 bool train_with_sample = false) {
-    initialize(num_keys, kInitDensity_);
+//   // Assumes pretrained_model is trained on dense array of keys
+//   void bulk_load(const V values[], int num_keys,
+//                  const LinearModel<T>* pretrained_model = nullptr,
+//                  bool train_with_sample = false) {
+//     initialize(num_keys, kInitDensity_);
 
-    if (num_keys == 0) {
-      expansion_threshold_ = data_capacity_;
-      contraction_threshold_ = 0;
-      for (int i = 0; i < data_capacity_; i++) {
-        ALEX_DATA_NODE_KEY_AT(i) = kEndSentinel_;
-      }
-      return;
-    }
+//     if (num_keys == 0) {
+//       expansion_threshold_ = data_capacity_;
+//       contraction_threshold_ = 0;
+//       for (int i = 0; i < data_capacity_; i++) {
+//         ALEX_DATA_NODE_KEY_AT(i) = kEndSentinel_;
+//       }
+//       return;
+//     }
 
-    // Build model
-    if (pretrained_model != nullptr) {
-      this->model_.a_ = pretrained_model->a_;
-      this->model_.b_ = pretrained_model->b_;
-    } else {
-      build_model(values, num_keys, &(this->model_), train_with_sample);
-    }
-    this->model_.expand(static_cast<double>(data_capacity_) / num_keys);
+//     // Build model
+//     if (pretrained_model != nullptr) {
+//       this->model_.a_ = pretrained_model->a_;
+//       this->model_.b_ = pretrained_model->b_;
+//     } else {
+//       build_model(values, num_keys, &(this->model_), train_with_sample);
+//     }
+//     this->model_.expand(static_cast<double>(data_capacity_) / num_keys);
 
-    // Model-based inserts
-    int last_position = -1;
-    int keys_remaining = num_keys;
-    for (int i = 0; i < num_keys; i++) {
-      int position = this->model_.predict(values[i].first);
-      position = std::max<int>(position, last_position + 1);
+//     // Model-based inserts
+//     int last_position = -1;
+//     int keys_remaining = num_keys;
+//     for (int i = 0; i < num_keys; i++) {
+//       int position = this->model_.predict(values[i].first);
+//       position = std::max<int>(position, last_position + 1);
 
-      int positions_remaining = data_capacity_ - position;
-      if (positions_remaining < keys_remaining) {
-        // fill the rest of the store contiguously
-        int pos = data_capacity_ - keys_remaining;
-        for (int j = last_position + 1; j < pos; j++) {
-          ALEX_DATA_NODE_KEY_AT(j) = values[i].first;
-        }
-        for (int j = i; j < num_keys; j++) {
-#if ALEX_DATA_NODE_SEP_ARRAYS
-          key_slots_[pos] = values[j].first;
-          payload_slots_[pos] = values[j].second;
-#else
-          data_slots_[pos] = values[j];
-#endif
-          set_bit(pos);
-          pos++;
-        }
-        last_position = pos - 1;
-        break;
-      }
+//       int positions_remaining = data_capacity_ - position;
+//       if (positions_remaining < keys_remaining) {
+//         // fill the rest of the store contiguously
+//         int pos = data_capacity_ - keys_remaining;
+//         for (int j = last_position + 1; j < pos; j++) {
+//           ALEX_DATA_NODE_KEY_AT(j) = values[i].first;
+//         }
+//         for (int j = i; j < num_keys; j++) {
+// #if ALEX_DATA_NODE_SEP_ARRAYS
+//           key_slots_[pos] = values[j].first;
+//           payload_slots_[pos] = values[j].second;
+// #else
+//           data_slots_[pos] = values[j];
+// #endif
+//           set_bit(pos);
+//           pos++;
+//         }
+//         last_position = pos - 1;
+//         break;
+//       }
 
-      for (int j = last_position + 1; j < position; j++) {
-        ALEX_DATA_NODE_KEY_AT(j) = values[i].first;
-      }
+//       for (int j = last_position + 1; j < position; j++) {
+//         ALEX_DATA_NODE_KEY_AT(j) = values[i].first;
+//       }
 
-#if ALEX_DATA_NODE_SEP_ARRAYS
-      key_slots_[position] = values[i].first;
-      payload_slots_[position] = values[i].second;
-#else
-      data_slots_[position] = values[i];
-#endif
-      set_bit(position);
+// #if ALEX_DATA_NODE_SEP_ARRAYS
+//       key_slots_[position] = values[i].first;
+//       payload_slots_[position] = values[i].second;
+// #else
+//       data_slots_[position] = values[i];
+// #endif
+//       set_bit(position);
 
-      last_position = position;
+//       last_position = position;
 
-      keys_remaining--;
-    }
+//       keys_remaining--;
+//     }
 
-    for (int i = last_position + 1; i < data_capacity_; i++) {
+//     for (int i = last_position + 1; i < data_capacity_; i++) {
+//       ALEX_DATA_NODE_KEY_AT(i) = kEndSentinel_;
+//     }
+
+//     expansion_threshold_ = std::min(std::max(data_capacity_ * kMaxDensity_,
+//                                              static_cast<double>(num_keys + 1)),
+//                                     static_cast<double>(data_capacity_));
+//     contraction_threshold_ = data_capacity_ * kMinDensity_;
+//     min_key_ = values[0].first;
+//     max_key_ = values[num_keys - 1].first;
+//   }
+
+// Assumes pretrained_model is trained on dense array of keys
+void bulk_load(const V values[], int num_keys,
+               const PolynomialModel<T>* pretrained_model = nullptr,
+               bool train_with_sample = false) {
+  initialize(num_keys, kInitDensity_);
+
+  if (num_keys == 0) {
+    expansion_threshold_ = data_capacity_;
+    contraction_threshold_ = 0;
+    for (int i = 0; i < data_capacity_; i++) {
       ALEX_DATA_NODE_KEY_AT(i) = kEndSentinel_;
     }
-
-    expansion_threshold_ = std::min(std::max(data_capacity_ * kMaxDensity_,
-                                             static_cast<double>(num_keys + 1)),
-                                    static_cast<double>(data_capacity_));
-    contraction_threshold_ = data_capacity_ * kMinDensity_;
-    min_key_ = values[0].first;
-    max_key_ = values[num_keys - 1].first;
+    return;
   }
+
+  // Build model
+  if (pretrained_model != nullptr) {
+    this->model_.a_ = pretrained_model->a_;
+    this->model_.b_ = pretrained_model->b_;
+    this->model_.c_ = pretrained_model->c_;
+  } else {
+    build_model(values, num_keys, &(this->model_), train_with_sample);
+  }
+  this->model_.expand(static_cast<double>(data_capacity_) / num_keys);
+
+  // Model-based inserts
+  int last_position = -1;
+  int keys_remaining = num_keys;
+  for (int i = 0; i < num_keys; i++) {
+    int position = this->model_.predict(values[i].first);
+    position = std::max<int>(position, last_position + 1);
+
+    int positions_remaining = data_capacity_ - position;
+    if (positions_remaining < keys_remaining) {
+      // fill the rest of the store contiguously
+      int pos = data_capacity_ - keys_remaining;
+      for (int j = last_position + 1; j < pos; j++) {
+        ALEX_DATA_NODE_KEY_AT(j) = values[i].first;
+      }
+      for (int j = i; j < num_keys; j++) {
+#if ALEX_DATA_NODE_SEP_ARRAYS
+        key_slots_[pos] = values[j].first;
+        payload_slots_[pos] = values[j].second;
+#else
+        data_slots_[pos] = values[j];
+#endif
+        set_bit(pos);
+        pos++;
+      }
+      last_position = pos - 1;
+      break;
+    }
+
+    for (int j = last_position + 1; j < position; j++) {
+      ALEX_DATA_NODE_KEY_AT(j) = values[i].first;
+    }
+
+#if ALEX_DATA_NODE_SEP_ARRAYS
+    key_slots_[position] = values[i].first;
+    payload_slots_[position] = values[i].second;
+#else
+    data_slots_[position] = values[i];
+#endif
+    set_bit(position);
+
+    last_position = position;
+    keys_remaining--;
+  }
+
+  for (int i = last_position + 1; i < data_capacity_; i++) {
+    ALEX_DATA_NODE_KEY_AT(i) = kEndSentinel_;
+  }
+
+  expansion_threshold_ = std::min(std::max(data_capacity_ * kMaxDensity_,
+                                           static_cast<double>(num_keys + 1)),
+                                  static_cast<double>(data_capacity_));
+  contraction_threshold_ = data_capacity_ * kMinDensity_;
+  min_key_ = values[0].first;
+  max_key_ = values[num_keys - 1].first;
+}
+
 
   // Bulk load using the keys between the left and right positions in
   // key/data_slots of an existing data node
   // keep_left and keep_right are set if the existing node was append-mostly
   // If the linear model and num_actual_keys have been precomputed, we can avoid
   // redundant work
-  void bulk_load_from_existing(
-      const self_type* node, int left, int right, bool keep_left = false,
-      bool keep_right = false,
-      const LinearModel<T>* precomputed_model = nullptr,
-      int precomputed_num_actual_keys = -1) {
-    assert(left >= 0 && right <= node->data_capacity_);
+//   void bulk_load_from_existing(
+//       const self_type* node, int left, int right, bool keep_left = false,
+//       bool keep_right = false,
+//       const LinearModel<T>* precomputed_model = nullptr,
+//       int precomputed_num_actual_keys = -1) {
+//     assert(left >= 0 && right <= node->data_capacity_);
 
-    // Build model
-    int num_actual_keys = 0;
-    if (precomputed_model == nullptr || precomputed_num_actual_keys == -1) {
-      const_iterator_type it(node, left);
-      LinearModelBuilder<T> builder(&(this->model_));
-      for (int i = 0; it.cur_idx_ < right && !it.is_end(); it++, i++) {
-        builder.add(it.key(), i);
-        num_actual_keys++;
-      }
-      builder.build();
-    } else {
-      num_actual_keys = precomputed_num_actual_keys;
-      this->model_.a_ = precomputed_model->a_;
-      this->model_.b_ = precomputed_model->b_;
-    }
+//     // Build model
+//     int num_actual_keys = 0;
+//     if (precomputed_model == nullptr || precomputed_num_actual_keys == -1) {
+//       const_iterator_type it(node, left);
+//       LinearModelBuilder<T> builder(&(this->model_));
+//       for (int i = 0; it.cur_idx_ < right && !it.is_end(); it++, i++) {
+//         builder.add(it.key(), i);
+//         num_actual_keys++;
+//       }
+//       builder.build();
+//     } else {
+//       num_actual_keys = precomputed_num_actual_keys;
+//       this->model_.a_ = precomputed_model->a_;
+//       this->model_.b_ = precomputed_model->b_;
+//     }
 
-    initialize(num_actual_keys, kMinDensity_);
-    if (num_actual_keys == 0) {
-      expansion_threshold_ = data_capacity_;
-      contraction_threshold_ = 0;
-      for (int i = 0; i < data_capacity_; i++) {
-        ALEX_DATA_NODE_KEY_AT(i) = kEndSentinel_;
-      }
-      return;
-    }
+//     initialize(num_actual_keys, kMinDensity_);
+//     if (num_actual_keys == 0) {
+//       expansion_threshold_ = data_capacity_;
+//       contraction_threshold_ = 0;
+//       for (int i = 0; i < data_capacity_; i++) {
+//         ALEX_DATA_NODE_KEY_AT(i) = kEndSentinel_;
+//       }
+//       return;
+//     }
 
-    // Special casing if existing node was append-mostly
-    if (keep_left) {
-      this->model_.expand((num_actual_keys / kMaxDensity_) / num_keys_);
-    } else if (keep_right) {
-      this->model_.expand((num_actual_keys / kMaxDensity_) / num_keys_);
-      this->model_.b_ += (data_capacity_ - (num_actual_keys / kMaxDensity_));
-    } else {
-      this->model_.expand(static_cast<double>(data_capacity_) / num_keys_);
-    }
+//     // Special casing if existing node was append-mostly
+//     if (keep_left) {
+//       this->model_.expand((num_actual_keys / kMaxDensity_) / num_keys_);
+//     } else if (keep_right) {
+//       this->model_.expand((num_actual_keys / kMaxDensity_) / num_keys_);
+//       this->model_.b_ += (data_capacity_ - (num_actual_keys / kMaxDensity_));
+//     } else {
+//       this->model_.expand(static_cast<double>(data_capacity_) / num_keys_);
+//     }
 
-    // Model-based inserts
-    int last_position = -1;
-    int keys_remaining = num_keys_;
+//     // Model-based inserts
+//     int last_position = -1;
+//     int keys_remaining = num_keys_;
+//     const_iterator_type it(node, left);
+//     min_key_ = it.key();
+//     for (; it.cur_idx_ < right && !it.is_end(); it++) {
+//       int position = this->model_.predict(it.key());
+//       position = std::max<int>(position, last_position + 1);
+
+//       int positions_remaining = data_capacity_ - position;
+//       if (positions_remaining < keys_remaining) {
+//         // fill the rest of the store contiguously
+//         int pos = data_capacity_ - keys_remaining;
+//         for (int j = last_position + 1; j < pos; j++) {
+//           ALEX_DATA_NODE_KEY_AT(j) = it.key();
+//         }
+//         for (; pos < data_capacity_; pos++, it++) {
+// #if ALEX_DATA_NODE_SEP_ARRAYS
+//           key_slots_[pos] = it.key();
+//           payload_slots_[pos] = it.payload();
+// #else
+//           data_slots_[pos] = *it;
+// #endif
+//           set_bit(pos);
+//         }
+//         last_position = pos - 1;
+//         break;
+//       }
+
+//       for (int j = last_position + 1; j < position; j++) {
+//         ALEX_DATA_NODE_KEY_AT(j) = it.key();
+//       }
+
+// #if ALEX_DATA_NODE_SEP_ARRAYS
+//       key_slots_[position] = it.key();
+//       payload_slots_[position] = it.payload();
+// #else
+//       data_slots_[position] = *it;
+// #endif
+//       set_bit(position);
+
+//       last_position = position;
+
+//       keys_remaining--;
+//     }
+
+//     for (int i = last_position + 1; i < data_capacity_; i++) {
+//       ALEX_DATA_NODE_KEY_AT(i) = kEndSentinel_;
+//     }
+
+//     max_key_ = ALEX_DATA_NODE_KEY_AT(last_position);
+
+//     expansion_threshold_ =
+//         std::min(std::max(data_capacity_ * kMaxDensity_,
+//                           static_cast<double>(num_keys_ + 1)),
+//                  static_cast<double>(data_capacity_));
+//     contraction_threshold_ = data_capacity_ * kMinDensity_;
+//   }
+
+void bulk_load_from_existing(
+    const self_type* node, int left, int right, bool keep_left = false,
+    bool keep_right = false,
+    const PolynomialModel<T>* precomputed_model = nullptr,
+    int precomputed_num_actual_keys = -1) {
+  assert(left >= 0 && right <= node->data_capacity_);
+
+  // Build model
+  int num_actual_keys = 0;
+  if (precomputed_model == nullptr || precomputed_num_actual_keys == -1) {
     const_iterator_type it(node, left);
-    min_key_ = it.key();
-    for (; it.cur_idx_ < right && !it.is_end(); it++) {
-      int position = this->model_.predict(it.key());
-      position = std::max<int>(position, last_position + 1);
-
-      int positions_remaining = data_capacity_ - position;
-      if (positions_remaining < keys_remaining) {
-        // fill the rest of the store contiguously
-        int pos = data_capacity_ - keys_remaining;
-        for (int j = last_position + 1; j < pos; j++) {
-          ALEX_DATA_NODE_KEY_AT(j) = it.key();
-        }
-        for (; pos < data_capacity_; pos++, it++) {
-#if ALEX_DATA_NODE_SEP_ARRAYS
-          key_slots_[pos] = it.key();
-          payload_slots_[pos] = it.payload();
-#else
-          data_slots_[pos] = *it;
-#endif
-          set_bit(pos);
-        }
-        last_position = pos - 1;
-        break;
-      }
-
-      for (int j = last_position + 1; j < position; j++) {
-        ALEX_DATA_NODE_KEY_AT(j) = it.key();
-      }
-
-#if ALEX_DATA_NODE_SEP_ARRAYS
-      key_slots_[position] = it.key();
-      payload_slots_[position] = it.payload();
-#else
-      data_slots_[position] = *it;
-#endif
-      set_bit(position);
-
-      last_position = position;
-
-      keys_remaining--;
+    PolynomialModelBuilder<T> builder(&(this->model_));
+    for (int i = 0; it.cur_idx_ < right && !it.is_end(); it++, i++) {
+      builder.add(it.key(), i);
+      num_actual_keys++;
     }
+    builder.build();
+  } else {
+    num_actual_keys = precomputed_num_actual_keys;
+    this->model_.a_ = precomputed_model->a_;
+    this->model_.b_ = precomputed_model->b_;
+    this->model_.c_ = precomputed_model->c_;
+  }
 
-    for (int i = last_position + 1; i < data_capacity_; i++) {
+  initialize(num_actual_keys, kMinDensity_);
+
+  if (num_actual_keys == 0) {
+    expansion_threshold_ = data_capacity_;
+    contraction_threshold_ = 0;
+    for (int i = 0; i < data_capacity_; i++) {
       ALEX_DATA_NODE_KEY_AT(i) = kEndSentinel_;
     }
-
-    max_key_ = ALEX_DATA_NODE_KEY_AT(last_position);
-
-    expansion_threshold_ =
-        std::min(std::max(data_capacity_ * kMaxDensity_,
-                          static_cast<double>(num_keys_ + 1)),
-                 static_cast<double>(data_capacity_));
-    contraction_threshold_ = data_capacity_ * kMinDensity_;
+    return;
   }
 
-  static void build_model(const V* values, int num_keys, LinearModel<T>* model,
-                          bool use_sampling = false) {
-    if (use_sampling) {
-      build_model_sampling(values, num_keys, model);
-      return;
+  // Special casing if existing node was append-mostly
+  if (keep_left) {
+    this->model_.expand((num_actual_keys / kMaxDensity_) / num_keys_);
+  } else if (keep_right) {
+    this->model_.expand((num_actual_keys / kMaxDensity_) / num_keys_);
+    this->model_.b_ += (data_capacity_ - (num_actual_keys / kMaxDensity_));
+  } else {
+    this->model_.expand(static_cast<double>(data_capacity_) / num_keys_);
+  }
+
+  // Model-based inserts
+  int last_position = -1;
+  int keys_remaining = num_keys_;
+  const_iterator_type it(node, left);
+  min_key_ = it.key();
+
+  for (; it.cur_idx_ < right && !it.is_end(); it++) {
+    int position = this->model_.predict(it.key());
+    position = std::max<int>(position, last_position + 1);
+
+    int positions_remaining = data_capacity_ - position;
+    if (positions_remaining < keys_remaining) {
+      int pos = data_capacity_ - keys_remaining;
+      for (int j = last_position + 1; j < pos; j++) {
+        ALEX_DATA_NODE_KEY_AT(j) = it.key();
+      }
+      for (; pos < data_capacity_ && it.cur_idx_ < right && !it.is_end();
+           pos++, it++) {
+#if ALEX_DATA_NODE_SEP_ARRAYS
+        key_slots_[pos] = it.key();
+        payload_slots_[pos] = it.payload();
+#else
+        data_slots_[pos] = *it;
+#endif
+        set_bit(pos);
+      }
+      last_position = pos - 1;
+      break;
     }
 
-    LinearModelBuilder<T> builder(model);
-    for (int i = 0; i < num_keys; i++) {
-      builder.add(values[i].first, i);
+    for (int j = last_position + 1; j < position; j++) {
+      ALEX_DATA_NODE_KEY_AT(j) = it.key();
     }
-    builder.build();
+
+#if ALEX_DATA_NODE_SEP_ARRAYS
+    key_slots_[position] = it.key();
+    payload_slots_[position] = it.payload();
+#else
+    data_slots_[position] = *it;
+#endif
+    set_bit(position);
+
+    last_position = position;
+    keys_remaining--;
   }
+
+  for (int i = last_position + 1; i < data_capacity_; i++) {
+    ALEX_DATA_NODE_KEY_AT(i) = kEndSentinel_;
+  }
+
+  max_key_ = ALEX_DATA_NODE_KEY_AT(last_position);
+
+  expansion_threshold_ =
+      std::min(std::max(data_capacity_ * kMaxDensity_,
+                        static_cast<double>(num_keys_ + 1)),
+               static_cast<double>(data_capacity_));
+  contraction_threshold_ = data_capacity_ * kMinDensity_;
+}
+
+
+  // static void build_model(const V* values, int num_keys, LinearModel<T>* model,
+  //                         bool use_sampling = false) {
+  //   if (use_sampling) {
+  //     build_model_sampling(values, num_keys, model);
+  //     return;
+  //   }
+
+  //   LinearModelBuilder<T> builder(model);
+  //   for (int i = 0; i < num_keys; i++) {
+  //     builder.add(values[i].first, i);
+  //   }
+  //   builder.build();
+  // }
+
+  static void build_model(const V* values, int num_keys, PolynomialModel<T>* model,
+                        bool use_sampling = false) {
+  if (use_sampling) {
+    build_model_sampling(values, num_keys, model);
+    return;
+  }
+
+  PolynomialModelBuilder<T> builder(model);
+  for (int i = 0; i < num_keys; i++) {
+    builder.add(values[i].first, i);
+  }
+  builder.build();
+}
+
+
+  // // Uses progressive non-random uniform sampling to build the model
+  // // Progressively increases sample size until model parameters are relatively
+  // // stable
+  // static void build_model_sampling(const V* values, int num_keys,
+  //                                  LinearModel<T>* model,
+  //                                  bool verbose = false) {
+  //   const static int sample_size_lower_bound = 10;
+  //   // If slope and intercept change by less than this much between samples,
+  //   // return
+  //   const static double rel_change_threshold = 0.01;
+  //   // If intercept changes by less than this much between samples, return
+  //   const static double abs_change_threshold = 0.5;
+  //   // Increase sample size by this many times each iteration
+  //   const static int sample_size_multiplier = 2;
+
+  //   // If the number of keys is sufficiently small, we do not sample
+  //   if (num_keys <= sample_size_lower_bound * sample_size_multiplier) {
+  //     build_model(values, num_keys, model, false);
+  //     return;
+  //   }
+
+  //   int step_size = 1;
+  //   double sample_size = num_keys;
+  //   while (sample_size >= sample_size_lower_bound) {
+  //     sample_size /= sample_size_multiplier;
+  //     step_size *= sample_size_multiplier;
+  //   }
+  //   step_size /= sample_size_multiplier;
+
+  //   // Run with initial step size
+  //   LinearModelBuilder<T> builder(model);
+  //   for (int i = 0; i < num_keys; i += step_size) {
+  //     builder.add(values[i].first, i);
+  //   }
+  //   builder.build();
+  //   double prev_a = model->a_;
+  //   double prev_b = model->b_;
+  //   if (verbose) {
+  //     std::cout << "Build index, sample size: " << num_keys / step_size
+  //               << " (a, b): (" << prev_a << ", " << prev_b << ")" << std::endl;
+  //   }
+
+  //   // Keep decreasing step size (increasing sample size) until model does not
+  //   // change significantly
+  //   while (step_size > 1) {
+  //     step_size /= sample_size_multiplier;
+  //     // Need to avoid processing keys we already processed in previous samples
+  //     int i = 0;
+  //     while (i < num_keys) {
+  //       i += step_size;
+  //       for (int j = 1; (j < sample_size_multiplier) && (i < num_keys);
+  //            j++, i += step_size) {
+  //         builder.add(values[i].first, i);
+  //       }
+  //     }
+  //     builder.build();
+
+  //     double rel_change_in_a = prev_a == 0 ? (model->a_ != 0) 
+  //                              : std::abs((model->a_ - prev_a) / prev_a);
+  //     double abs_change_in_b = std::abs(model->b_ - prev_b);
+  //     double rel_change_in_b = std::abs(abs_change_in_b / prev_b);
+  //     if (verbose) {
+  //       std::cout << "Build index, sample size: " << num_keys / step_size
+  //                 << " (a, b): (" << model->a_ << ", " << model->b_ << ") ("
+  //                 << rel_change_in_a << ", " << rel_change_in_b << ")"
+  //                 << std::endl;
+  //     }
+  //     if (rel_change_in_a < rel_change_threshold &&
+  //         (rel_change_in_b < rel_change_threshold ||
+  //          abs_change_in_b < abs_change_threshold)) {
+  //       return;
+  //     }
+  //     prev_a = model->a_;
+  //     prev_b = model->b_;
+  //   }
+  // }
 
   // Uses progressive non-random uniform sampling to build the model
-  // Progressively increases sample size until model parameters are relatively
-  // stable
-  static void build_model_sampling(const V* values, int num_keys,
-                                   LinearModel<T>* model,
-                                   bool verbose = false) {
-    const static int sample_size_lower_bound = 10;
-    // If slope and intercept change by less than this much between samples,
-    // return
-    const static double rel_change_threshold = 0.01;
-    // If intercept changes by less than this much between samples, return
-    const static double abs_change_threshold = 0.5;
-    // Increase sample size by this many times each iteration
-    const static int sample_size_multiplier = 2;
+// Progressively increases sample size until model parameters are relatively stable
+static void build_model_sampling(const V* values, int num_keys,
+                                 PolynomialModel<T>* model,
+                                 bool verbose = false) {
+  const static int sample_size_lower_bound = 10;
+  const static double rel_change_threshold = 0.01;
+  const static double abs_change_threshold = 0.5;
+  const static int sample_size_multiplier = 2;
 
-    // If the number of keys is sufficiently small, we do not sample
-    if (num_keys <= sample_size_lower_bound * sample_size_multiplier) {
-      build_model(values, num_keys, model, false);
+  if (num_keys <= sample_size_lower_bound * sample_size_multiplier) {
+    build_model(values, num_keys, model, false);
+    return;
+  }
+
+  int step_size = 1;
+  double sample_size = num_keys;
+  while (sample_size >= sample_size_lower_bound) {
+    sample_size /= sample_size_multiplier;
+    step_size *= sample_size_multiplier;
+  }
+  step_size /= sample_size_multiplier;
+
+  // Run with initial step size
+  PolynomialModelBuilder<T> builder(model);
+  for (int i = 0; i < num_keys; i += step_size) {
+    builder.add(values[i].first, i);
+  }
+  builder.build();
+  double prev_a = model->a_;
+  double prev_b = model->b_;
+  double prev_c = model->c_;
+  if (verbose) {
+    std::cout << "Build index, sample size: " << num_keys / step_size
+              << " (a, b, c): (" << prev_a << ", " << prev_b << ", " << prev_c << ")\n";
+  }
+
+  while (step_size > 1) {
+    step_size /= sample_size_multiplier;
+    int i = 0;
+    while (i < num_keys) {
+      i += step_size;
+      for (int j = 1; (j < sample_size_multiplier) && (i < num_keys); j++, i += step_size) {
+        builder.add(values[i].first, i);
+      }
+    }
+    builder.build();
+
+    double rel_change_in_a = prev_a == 0 ? (model->a_ != 0) 
+                              : std::abs((model->a_ - prev_a) / prev_a);
+    double rel_change_in_b = std::abs((model->b_ - prev_b) / prev_b);
+    double abs_change_in_b = std::abs(model->b_ - prev_b);
+    double rel_change_in_c = prev_c == 0 ? (model->c_ != 0) 
+                              : std::abs((model->c_ - prev_c) / prev_c);
+
+    if (verbose) {
+      std::cout << "Build index, sample size: " << num_keys / step_size
+                << " (a, b, c): (" << model->a_ << ", " << model->b_ << ", " << model->c_ << ") ("
+                << rel_change_in_a << ", " << rel_change_in_b << ", " << rel_change_in_c << ")\n";
+    }
+
+    if (rel_change_in_a < rel_change_threshold &&
+        rel_change_in_c < rel_change_threshold &&
+        (rel_change_in_b < rel_change_threshold || abs_change_in_b < abs_change_threshold)) {
       return;
     }
 
-    int step_size = 1;
-    double sample_size = num_keys;
-    while (sample_size >= sample_size_lower_bound) {
-      sample_size /= sample_size_multiplier;
-      step_size *= sample_size_multiplier;
-    }
-    step_size /= sample_size_multiplier;
-
-    // Run with initial step size
-    LinearModelBuilder<T> builder(model);
-    for (int i = 0; i < num_keys; i += step_size) {
-      builder.add(values[i].first, i);
-    }
-    builder.build();
-    double prev_a = model->a_;
-    double prev_b = model->b_;
-    if (verbose) {
-      std::cout << "Build index, sample size: " << num_keys / step_size
-                << " (a, b): (" << prev_a << ", " << prev_b << ")" << std::endl;
-    }
-
-    // Keep decreasing step size (increasing sample size) until model does not
-    // change significantly
-    while (step_size > 1) {
-      step_size /= sample_size_multiplier;
-      // Need to avoid processing keys we already processed in previous samples
-      int i = 0;
-      while (i < num_keys) {
-        i += step_size;
-        for (int j = 1; (j < sample_size_multiplier) && (i < num_keys);
-             j++, i += step_size) {
-          builder.add(values[i].first, i);
-        }
-      }
-      builder.build();
-
-      double rel_change_in_a = prev_a == 0 ? (model->a_ != 0) 
-                               : std::abs((model->a_ - prev_a) / prev_a);
-      double abs_change_in_b = std::abs(model->b_ - prev_b);
-      double rel_change_in_b = std::abs(abs_change_in_b / prev_b);
-      if (verbose) {
-        std::cout << "Build index, sample size: " << num_keys / step_size
-                  << " (a, b): (" << model->a_ << ", " << model->b_ << ") ("
-                  << rel_change_in_a << ", " << rel_change_in_b << ")"
-                  << std::endl;
-      }
-      if (rel_change_in_a < rel_change_threshold &&
-          (rel_change_in_b < rel_change_threshold ||
-           abs_change_in_b < abs_change_threshold)) {
-        return;
-      }
-      prev_a = model->a_;
-      prev_b = model->b_;
-    }
+    prev_a = model->a_;
+    prev_b = model->b_;
+    prev_c = model->c_;
   }
+}
+
 
   // Unused function: builds a spline model by connecting the smallest and
   // largest points instead of using
   // a linear regression
+  // static void build_spline(const V* values, int num_keys,
+  //                          const LinearModel<T>* model) {
+  //   int y_max = num_keys - 1;
+  //   int y_min = 0;
+  //   model->a_ = static_cast<double>(y_max - y_min) /
+  //               (values[y_max].first - values[y_min].first);
+  //   model->b_ = -1.0 * values[y_min].first * model->a_;
+  // }
+
   static void build_spline(const V* values, int num_keys,
-                           const LinearModel<T>* model) {
-    int y_max = num_keys - 1;
-    int y_min = 0;
-    model->a_ = static_cast<double>(y_max - y_min) /
-                (values[y_max].first - values[y_min].first);
-    model->b_ = -1.0 * values[y_min].first * model->a_;
-  }
+                         PolynomialModel<T>* model) {
+  int y_max = num_keys - 1;
+  int y_min = 0;
+  model->c_ = 0;  // fallback spline is linear, so no x² term
+  model->a_ = static_cast<double>(y_max - y_min) /
+              (values[y_max].first - values[y_min].first);
+  model->b_ = -1.0 * values[y_min].first * model->a_;
+}
+
 
   /*** Lookup ***/
 
@@ -1757,30 +2402,56 @@ class AlexDataNode : public AlexNode<T, P> {
         V[new_data_capacity];
 #endif
 
+    // // Retrain model if the number of keys is sufficiently small (under 50)
+    // if (num_keys_ < 50 || force_retrain) {
+    //   const_iterator_type it(this, 0);
+    //   LinearModelBuilder<T> builder(&(this->model_));
+    //   for (int i = 0; it.cur_idx_ < data_capacity_ && !it.is_end(); it++, i++) {
+    //     builder.add(it.key(), i);
+    //   }
+    //   builder.build();
+    //   if (keep_left) {
+    //     this->model_.expand(static_cast<double>(data_capacity_) / num_keys_);
+    //   } else if (keep_right) {
+    //     this->model_.expand(static_cast<double>(data_capacity_) / num_keys_);
+    //     this->model_.b_ += (new_data_capacity - data_capacity_);
+    //   } else {
+    //     this->model_.expand(static_cast<double>(new_data_capacity) / num_keys_);
+    //   }
+    // } else {
+    //   if (keep_right) {
+    //     this->model_.b_ += (new_data_capacity - data_capacity_);
+    //   } else if (!keep_left) {
+    //     this->model_.expand(static_cast<double>(new_data_capacity) /
+    //                         data_capacity_);
+    //   }
+    // }
+
     // Retrain model if the number of keys is sufficiently small (under 50)
-    if (num_keys_ < 50 || force_retrain) {
-      const_iterator_type it(this, 0);
-      LinearModelBuilder<T> builder(&(this->model_));
-      for (int i = 0; it.cur_idx_ < data_capacity_ && !it.is_end(); it++, i++) {
-        builder.add(it.key(), i);
-      }
-      builder.build();
-      if (keep_left) {
-        this->model_.expand(static_cast<double>(data_capacity_) / num_keys_);
-      } else if (keep_right) {
-        this->model_.expand(static_cast<double>(data_capacity_) / num_keys_);
-        this->model_.b_ += (new_data_capacity - data_capacity_);
-      } else {
-        this->model_.expand(static_cast<double>(new_data_capacity) / num_keys_);
-      }
-    } else {
-      if (keep_right) {
-        this->model_.b_ += (new_data_capacity - data_capacity_);
-      } else if (!keep_left) {
-        this->model_.expand(static_cast<double>(new_data_capacity) /
-                            data_capacity_);
-      }
+  if (num_keys_ < 50 || force_retrain) {
+    const_iterator_type it(this, 0);
+    PolynomialModelBuilder<T> builder(&(this->model_));
+    for (int i = 0; it.cur_idx_ < data_capacity_ && !it.is_end(); it++, i++) {
+      builder.add(it.key(), i);
     }
+    builder.build();
+
+    if (keep_left) {
+      this->model_.expand(static_cast<double>(data_capacity_) / num_keys_);
+    } else if (keep_right) {
+      this->model_.expand(static_cast<double>(data_capacity_) / num_keys_);
+      this->model_.b_ += (new_data_capacity - data_capacity_);
+    } else {
+      this->model_.expand(static_cast<double>(new_data_capacity) / num_keys_);
+    }
+  } else {
+    if (keep_right) {
+      this->model_.b_ += (new_data_capacity - data_capacity_);
+    } else if (!keep_left) {
+      this->model_.expand(static_cast<double>(new_data_capacity) / data_capacity_);
+    }
+  }
+
 
     int last_position = -1;
     int keys_remaining = num_keys_;

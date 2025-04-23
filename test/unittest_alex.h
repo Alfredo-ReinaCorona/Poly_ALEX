@@ -9,6 +9,8 @@ using namespace alex;
 
 TEST_SUITE("Alex") {
 
+
+// Pass
 TEST_CASE("TestBulkLoad") {
   Alex<int, int> index;
 
@@ -32,41 +34,7 @@ TEST_CASE("TestBulkLoad") {
   CHECK_EQ(index.get_stats().num_keys, 0);
 }
 
-TEST_CASE("TestConstructors") {
-  Alex<int, int> index;
-
-  Alex<int, int>::V values[500];
-  for (int i = 0; i < 500; i++) {
-    values[i].first = rand() % 5000;
-    values[i].second = i;
-  }
-
-  std::sort(values, values + 500);
-  index.bulk_load(values, 500);
-
-  Alex<int, int> index2(index);  // Copy constructor
-  Alex<int, int> index3;
-  index3 = index;  // Assignment
-  Alex<int, int> index4(std::begin(values), std::end(values));
-
-  CHECK_NE(index.root_node_, index2.root_node_);
-  CHECK_NE(index.root_node_, index3.root_node_);
-
-  for (int i = 0; i < 500; i++) {
-    auto it2 = index2.find(values[i].first);
-    CHECK(!it2.is_end());
-    CHECK_EQ(values[i].first, it2.key());
-
-    auto it3 = index3.find(values[i].first);
-    CHECK(!it3.is_end());
-    CHECK_EQ(values[i].first, it3.key());
-
-    auto it4 = index4.find(values[i].first);
-    CHECK(!it4.is_end());
-    CHECK_EQ(values[i].first, it4.key());
-  }
-}
-
+// FAIL
 TEST_CASE("TestIterators") {
   Alex<int, int> index;
 
@@ -136,6 +104,7 @@ TEST_CASE("TestIterators") {
   CHECK_EQ(501, num_keys);
 }
 
+// Pass
 TEST_CASE("TestConst") {
   Alex<int, int>::V values[500];
   // even numbers from 0 to 998 inclusive
@@ -154,6 +123,7 @@ TEST_CASE("TestConst") {
   }
 }
 
+// Pass
 TEST_CASE("TestFind") {
   Alex<int, int> index;
 
@@ -188,7 +158,7 @@ TEST_CASE("TestFind") {
   }
 }
 
-// Also tests count and equal_range
+// Pass
 TEST_CASE("TestLowerUpperBound") {
   Alex<int, int> index;
 
@@ -251,6 +221,7 @@ TEST_CASE("TestLowerUpperBound") {
   }
 }
 
+// Pass
 TEST_CASE("TestFindLastNoGreaterThan") {
   Alex<int, int> index;
 
@@ -297,6 +268,7 @@ TEST_CASE("TestFindLastNoGreaterThan") {
   CHECK_EQ(values[0].first, it.key());
 }
 
+// Pass
 TEST_CASE("TestLargeFindLastNoGreaterThan") {
   Alex<uint64_t, uint64_t> index;
   index.insert(std::make_pair(0ULL, 0ULL));
@@ -336,6 +308,45 @@ TEST_CASE("TestLargeFindLastNoGreaterThan") {
   CHECK(p);
   CHECK_EQ(max_key_value, *p);
 }
+
+// Pass
+TEST_CASE("TestRangeScan") {
+  Alex<int, int> index;
+
+  Alex<int, int>::V values[200];
+  for (int i = 0; i < 200; i++) {
+    values[i].first = i;
+    values[i].second = i;
+  }
+
+  std::sort(values, values + 200);
+  index.bulk_load(values, 200);
+
+  std::vector<int> results;
+  int sum = 0;
+  auto it = index.begin();
+  for (; it != index.end(); it++) {
+    results.push_back((*it).second);
+    sum += (*it).second;
+  }
+  CHECK_EQ(results.size(), 200);
+  CHECK_EQ(sum, 19900);
+
+  std::vector<int> results2;
+  int sum2 = 0;
+  auto it2 = index.find(10);
+  auto it_end = index.find(100);
+  for (; it2 != it_end; it2++) {
+    results2.push_back((*it2).second);
+    sum2 += (*it2).second;
+  }
+  CHECK_EQ(results2.size(), 90);
+  CHECK_EQ(sum2, 4905);
+}
+
+
+ 
+// OLTP Unit tests - not relevant to our Read Only workload
 
 TEST_CASE("TestReadModifyWrite") {
   Alex<int, int> index;
@@ -489,37 +500,39 @@ TEST_CASE("TestRandomErases") {
   CHECK_EQ(index.stats_.num_keys, 0);
 }
 
-TEST_CASE("TestRangeScan") {
+TEST_CASE("TestConstructors") {
   Alex<int, int> index;
 
-  Alex<int, int>::V values[200];
-  for (int i = 0; i < 200; i++) {
-    values[i].first = i;
+  Alex<int, int>::V values[500];
+  for (int i = 0; i < 500; i++) {
+    values[i].first = rand() % 5000;
     values[i].second = i;
   }
 
-  std::sort(values, values + 200);
-  index.bulk_load(values, 200);
+  std::sort(values, values + 500);
+  index.bulk_load(values, 500);
 
-  std::vector<int> results;
-  int sum = 0;
-  auto it = index.begin();
-  for (; it != index.end(); it++) {
-    results.push_back((*it).second);
-    sum += (*it).second;
-  }
-  CHECK_EQ(results.size(), 200);
-  CHECK_EQ(sum, 19900);
+  Alex<int, int> index2(index);  // Copy constructor
+  Alex<int, int> index3;
+  index3 = index;  // Assignment
+  Alex<int, int> index4(std::begin(values), std::end(values));
 
-  std::vector<int> results2;
-  int sum2 = 0;
-  auto it2 = index.find(10);
-  auto it_end = index.find(100);
-  for (; it2 != it_end; it2++) {
-    results2.push_back((*it2).second);
-    sum2 += (*it2).second;
+  CHECK_NE(index.root_node_, index2.root_node_);
+  CHECK_NE(index.root_node_, index3.root_node_);
+
+  for (int i = 0; i < 500; i++) {
+    auto it2 = index2.find(values[i].first);
+    CHECK(!it2.is_end());
+    CHECK_EQ(values[i].first, it2.key());
+
+    auto it3 = index3.find(values[i].first);
+    CHECK(!it3.is_end());
+    CHECK_EQ(values[i].first, it3.key());
+
+    auto it4 = index4.find(values[i].first);
+    CHECK(!it4.is_end());
+    CHECK_EQ(values[i].first, it4.key());
   }
-  CHECK_EQ(results2.size(), 90);
-  CHECK_EQ(sum2, 4905);
 }
+
 };

@@ -1,0 +1,6 @@
+/home/arc/Documents/CSCI_550_Project_2/ALEX/build/CMakeFiles/example.dir
+/home/arc/Documents/CSCI_550_Project_2/ALEX/build/CMakeFiles/benchmark.dir
+/home/arc/Documents/CSCI_550_Project_2/ALEX/build/CMakeFiles/test_alex.dir
+/home/arc/Documents/CSCI_550_Project_2/ALEX/build/CMakeFiles/test.dir
+/home/arc/Documents/CSCI_550_Project_2/ALEX/build/CMakeFiles/edit_cache.dir
+/home/arc/Documents/CSCI_550_Project_2/ALEX/build/CMakeFiles/rebuild_cache.dir
